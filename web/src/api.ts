@@ -18,7 +18,14 @@ async function request<T>(method: string, path: string, body?: unknown, headers:
       (init.headers as Record<string, string>)["Content-Type"] = "application/json";
     }
   }
-  const res = await fetch("/api" + path, init);
+  // Maintenance mode (reindex, large restructuring) answers 503 with
+  // Retry-After before anything was written; wait it out for a few seconds
+  // instead of failing the user's action.
+  let res = await fetch("/api" + path, init);
+  for (let attempt = 0; res.status === 503 && res.headers.get("Retry-After") && attempt < 8; attempt++) {
+    await new Promise((r) => setTimeout(r, 750));
+    res = await fetch("/api" + path, init);
+  }
   if (res.status === 204) return undefined as T;
   const text = await res.text();
   let parsed: unknown = text;

@@ -28,6 +28,11 @@ type Foundation struct {
 
 	MaxAttempts int
 
+	// writeMu serializes writers within one process: Git commits are serial
+	// anyway, and queueing beats a thundering herd of CAS retries. Writers in
+	// other processes are still coordinated by the two compare-and-swaps.
+	writeMu sync.Mutex
+
 	subMu sync.RWMutex
 	subs  []func(Event)
 }
@@ -162,6 +167,8 @@ type prepare func(t *txn) (*changeset, error)
 //	project commit → [mutex] publish (CAS) → advance processed_hash →
 //	[release] → commit DB tx; on a stale CAS: rollback, rebuild, retry.
 func (f *Foundation) write(ctx context.Context, allowMaintenance bool, build prepare) (any, error) {
+	f.writeMu.Lock()
+	defer f.writeMu.Unlock()
 	var lastErr error
 	for attempt := 0; attempt < f.MaxAttempts; attempt++ {
 		if attempt > 0 {

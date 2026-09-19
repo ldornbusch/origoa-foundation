@@ -1,5 +1,6 @@
 import { LitElement, html, nothing, type TemplateResult } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
+import { live } from "lit/directives/live.js";
 import { api, ApiError } from "./api";
 import { navigate } from "./router";
 import { store, type State } from "./store";
@@ -201,7 +202,7 @@ export class DocumentView extends LitElement {
   }
 
   private insertEntry(afterId: string | null) {
-    store.set({ dialog: { kind: "pick", title: "Insert entry reference", kinds: ["entry"], onPick: (s: Summary) => {
+    store.set({ picker: { kind: "pick", title: "Insert entry reference", kinds: ["entry"], onPick: (s: Summary) => {
       this.entries.set(s.guid, s);
       this.insertAfter(afterId, { id: blockId(), type: "entry", guid: s.guid });
     } } });
@@ -242,8 +243,12 @@ export class DocumentView extends LitElement {
       <button title="Move up" @click=${() => this.moveBlock(b.id!, -1)}>▲</button><button title="Move down" @click=${() => this.moveBlock(b.id!, 1)}>▼</button>
       <button title="Indent into previous section (Tab)" @click=${() => this.indent(b.id!)}>→</button><button title="Outdent (Shift+Tab)" @click=${() => this.outdent(b.id!)}>←</button>
       <button title="Delete block" @click=${() => this.removeBlock(b.id!)}>✕</button></div>`;
+    // The text is bound with live() so re-renders never rewrite (and thus
+    // never move the caret in) a block the user is typing into.
     const editable = (cls: string, key: "title" | "text", placeholder: string) => html`<div class="block ${cls}" contenteditable="plaintext-only" data-placeholder=${placeholder} spellcheck="true"
-      @focus=${() => (this.focused = b.id!)} @blur=${(e: Event) => this.commitText(e.target as HTMLElement, b)} @keydown=${(e: KeyboardEvent) => this.onKey(e, b)}>${b[key] ?? ""}</div>`;
+      .textContent=${live(b[key] ?? "")}
+      @focus=${() => (this.focused = b.id!)} @input=${(e: Event) => this.commitText(e.target as HTMLElement, b)}
+      @blur=${(e: Event) => this.commitText(e.target as HTMLElement, b)} @keydown=${(e: KeyboardEvent) => this.onKey(e, b)}></div>`;
     let body: TemplateResult;
     switch (b.type) {
       case "section":
@@ -273,7 +278,7 @@ export class DocumentView extends LitElement {
             <div class="head">${kindIcon("entry")}${meta.hid ? html`<span class="hid">${meta.hid}</span>` : nothing}<b>${meta.title}</b><span class="muted small">${meta.type}</span>
               ${Object.entries(meta.workflows ?? {}).map(([, st]) => html`<span class="pill state">${st}</span>`)}</div>
             <div class="fields">${Object.entries(meta.fields ?? {}).slice(0, 6).map(([k, v]) => html`<span><b>${k}</b>: ${typeof v === "object" ? JSON.stringify(v) : String(v)}</span>`)}</div></div>`
-          : html`<div class="entry-card missing">${this.entries.has(b.guid ?? "") ? html`Entry <code>${b.guid}</code> is missing` : "Loading entry…"}</div>`;
+          : html`<div class="entry-card missing" data-entry=${b.guid ?? ""}>${this.entries.has(b.guid ?? "") ? html`Entry <code>${b.guid}</code> is missing` : "Loading entry…"}</div>`;
         break;
       }
       default:

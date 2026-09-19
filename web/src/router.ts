@@ -38,7 +38,7 @@ export function routeToURL(r: Route): string {
   if (r.tab) sp.set("tab", r.tab);
   if (r.expanded) sp.set("x", "1");
   if (r.sidebars.length) sp.set("sb", r.sidebars.join(","));
-  const s = sp.toString();
+  const s = sp.toString().replace(/%2C/g, ",");
   return path + (s ? "?" + s : "");
 }
 

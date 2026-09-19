@@ -36,6 +36,7 @@ export interface State {
   presence: Record<string, Presence>;
   toasts: Toast[];
   dialog: Dialog | null;
+  picker: Dialog | null; // an artifact picker shown above the current dialog
   refreshTick: number;
   navCollapsed: boolean;
 }
@@ -57,6 +58,7 @@ class Store {
     presence: {},
     toasts: [],
     dialog: null,
+    picker: null,
     refreshTick: 0,
     navCollapsed: localStorage.getItem("origoa.nav") === "collapsed",
   };

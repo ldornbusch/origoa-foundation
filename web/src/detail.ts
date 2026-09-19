@@ -36,6 +36,9 @@ export class Detail extends LitElement {
   private lastTick = -1;
   private editing = false;
   private loadSeq = 0;
+  private softInFlight = false;
+  private softPending = false;
+  private warnedEtag = "";
 
   override createRenderRoot() { return this; }
   override connectedCallback() {
@@ -61,24 +64,34 @@ export class Detail extends LitElement {
   }
 
   private async reload(soft: boolean) {
-    // Only the most recent load may apply its results: a soft refresh for
-    // the previous artifact must never race a navigation to the next one.
-    const seq = ++this.loadSeq;
+    // A navigation (hard load) supersedes everything in flight. Soft
+    // refreshes (repository events) are coalesced: under a stream of
+    // events one refresh runs at a time and one more is queued, so the
+    // view always catches up instead of being superseded forever.
+    if (soft) {
+      if (this.softInFlight) { this.softPending = true; return; }
+      this.softInFlight = true;
+    }
+    const seq = soft ? this.loadSeq : ++this.loadSeq;
     const guid = this.guid;
     const stale = () => seq !== this.loadSeq || guid !== this.guid;
-    if (!soft) { this.loading = true; this.view = null; this.schema = null; this.overlay = null; this.rel = null; this.comments = []; this.history = []; this.workflows = []; }
+    try {
+      await this.load(soft, guid, stale);
+    } finally {
+      if (soft) {
+        this.softInFlight = false;
+        if (this.softPending && !stale()) { this.softPending = false; void this.reload(true); }
+        else this.softPending = false;
+      }
+    }
+  }
+
+  private async load(soft: boolean, guid: string, stale: () => boolean) {
+    if (!soft) { this.loading = true; this.view = null; this.draft = null; this.schema = null; this.overlay = null; this.rel = null; this.comments = []; this.history = []; this.workflows = []; }
     this.error = "";
     try {
       const view = await api.get(guid);
       if (stale()) return;
-      if (soft && this.dirty && view.etag !== this.view?.etag) {
-        // Keep the draft and the ETag we started from: saving will be
-        // rejected (412) instead of silently overwriting the other change.
-        store.toast("This artifact was changed by someone else while you were editing.", "error", { label: "Reload", run: () => { this.draft = null; this.reload(false); } });
-        this.loading = false;
-        return;
-      }
-      this.view = view;
       const [schema, wf, rel, comments, history, overlay] = await Promise.all([
         api.schemaOf(guid).catch(() => ({ schema: null })),
         api.workflows(guid).catch(() => ({ workflows: [] })),
@@ -88,13 +101,27 @@ export class Detail extends LitElement {
         view.meta.kind === "entry" ? api.overlay(guid).catch(() => null) : Promise.resolve(null),
       ]);
       if (stale()) return;
+      // Judge the draft against the view it was made from, after every
+      // await: typing that happened during the fetches must survive.
+      const wasDirty = this.dirty;
+      if (soft && wasDirty && view.etag !== this.view?.etag) {
+        // Keep the draft and the ETag we started from: saving will be
+        // rejected (412) instead of silently overwriting the other change.
+        if (this.warnedEtag !== view.etag) {
+          this.warnedEtag = view.etag;
+          store.toast("This artifact was changed by someone else while you were editing.", "error", { label: "Reload", run: () => { this.draft = null; this.reload(false); } });
+        }
+        this.loading = false;
+        return;
+      }
+      this.view = view;
       this.schema = schema.schema;
       this.workflows = wf.workflows;
       this.rel = rel;
       this.comments = comments.comments;
       this.history = history.history;
       this.overlay = overlay;
-      if (!this.draft || !this.dirty) this.resetDraft();
+      if (!this.draft || !wasDirty) this.resetDraft(); // an untouched draft follows the new version
     } catch (e) {
       if (stale()) return;
       this.error = e instanceof ApiError ? e.message : String(e);
@@ -180,7 +207,7 @@ export class Detail extends LitElement {
   }
 
   private addLink(asSource: boolean, type: string, types?: string[]) {
-    store.set({ dialog: { kind: "pick", title: asSource ? `${type}: choose target` : `${type}: choose source`, types, exclude: this.guid, kinds: ["entry", "document"],
+    store.set({ picker: { kind: "pick", title: asSource ? `${type}: choose target` : `${type}: choose source`, types, exclude: this.guid, kinds: ["entry", "document"],
       onPick: async (other: { guid: string }) => {
         try {
           await api.create("links", asSource ? { type, source: this.guid, target: other.guid } : { type, source: other.guid, target: this.guid });
@@ -221,8 +248,9 @@ export class Detail extends LitElement {
   }
 
   override render() {
-    if (this.loading && !this.view) return html`<div class="empty-state">Loading…</div>`;
+    if (!this.view && (this.loading || !this.error)) return html`<div class="empty-state">Loading…</div>`;
     if (!this.view) return html`<div class="empty-state"><div class="big">Artifact not available</div>${this.error}<br><button class="btn" @click=${() => navigate({ guid: null })}>Back</button></div>`;
+    if (!this.draft) return html`<div class="empty-state">Loading…</div>`;
     const v = this.view;
     const r = this.s.route;
     const presence = this.s.presence[this.guid];

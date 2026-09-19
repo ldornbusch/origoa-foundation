@@ -168,8 +168,11 @@ export ORIGOA_TEST_DSN=postgres://postgres:postgres@127.0.0.1:5432/origoa_test?s
 make test        # go vet, gofmt gate, all packages with -race (PostgreSQL-backed tests skip without the DSN)
 make fuzz        # fuzz smoke: JSON codec fixed point, folder validation envelope, scanner classification
 make e2e         # REST end-to-end script against a temporary server
-make test-ui     # Playwright browser tests: + New flow, editing with 412 handling, workflows, links, comments, overlays, documents, search, deep links, delete,
-                 # plus adversarial cases (script-looking content, javascript:/data: URLs, over-long input, double submit, garbage deep links)
+make test-ui     # Playwright browser suites (needs the origoa_e2e database): the + New flow, every field type through the
+                 # generated form, attachments, the block editor, workflows, relationships, overlays, HID renames, moves,
+                 # search and deep links, keyboard shortcuts, responsive and dark mode, reindex, two users in separate
+                 # contexts (presence, live updates, conflicts), plus adversarial cases (script-looking content,
+                 # javascript:/data: URLs, over-long input, double submit, garbage deep links)
 ```
 
 Adversarial suites live next to the regular ones: `internal/foundation/adversarial_test.go` (hostile

@@ -85,7 +85,7 @@ test("edit fields, save with optimistic concurrency, and see history", async ({ 
   await page.locator("[data-test=title]").fill("my version");
   const res = await fetch(`${api}/artifacts/${e.meta.guid}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title: "changed elsewhere" }) });
   expect(res.ok).toBeTruthy();
-  await expect(page.locator(".toast.error")).toContainText("changed by someone else");
+  await expect(page.locator(".toast.error").first()).toContainText("changed by someone else");
   await expect(page.locator("[data-test=title]")).toHaveValue("my version");
   await page.locator("[data-test=save]").click();
   await expect(page.locator(".notice.error")).toContainText("modified");

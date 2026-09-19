@@ -116,6 +116,7 @@ export class Overview extends LitElement {
           ${[["", "Entries + Docs"], ["entry", "Entries"], ["document", "Documents"], ["link", "Links"], ["comment", "Comments"]].map(([k, name]) => html`
             <button class="chip ${r.kind === k ? "on" : ""}" @click=${() => navigate({ kind: k, type: k ? r.type : r.type })}>${name}</button>`)}
         </div>
+        ${r.folder && !r.q && !r.type ? html`<button class="btn sm" data-test="move-folder" title="Move or rename this folder" @click=${this.moveFolder}>Move folder…</button>` : nothing}
         <button class="btn sm" title="Reload" @click=${() => store.refresh()}>↻</button>
       </div>
       ${this.error ? html`<div class="notice error">${this.error}</div>` : nothing}
@@ -136,6 +137,17 @@ export class Overview extends LitElement {
         </table>`}
       </div>`;
   }
+
+  private moveFolder = () => {
+    const from = this.s.route.folder;
+    const to = prompt(`Move folder "${from}" to:`, from);
+    if (to === null || to.trim() === from) return;
+    api.moveFolder(from, to.trim()).then((res) => {
+      store.toast(`Moved ${res.moved} file${res.moved === 1 ? "" : "s"} to ${to.trim() || "/"}`, "success");
+      store.refresh();
+      navigate({ folder: to.trim().replace(/^\/+|\/+$/g, ""), guid: null });
+    }).catch((e) => store.toast(e.message, "error"));
+  };
 
   private newMenu() {
     const r = this.s.route;

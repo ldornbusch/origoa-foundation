@@ -8,6 +8,9 @@
 .PHONY: build web test test-ui e2e fuzz run clean
 
 ORIGOA_TEST_DSN ?= postgres://postgres:postgres@127.0.0.1:5432/origoa_test?sslmode=disable
+# Servers started by e2e/test-ui use their own database: two servers with different
+# repositories must never share one projection database.
+ORIGOA_E2E_DSN ?= postgres://postgres:postgres@127.0.0.1:5432/origoa_e2e?sslmode=disable
 ORIGOA_DB ?= postgres://postgres:postgres@127.0.0.1:5432/origoa?sslmode=disable
 export ORIGOA_TEST_DSN
 
@@ -31,7 +34,7 @@ fuzz:
 # given command against it, and stops it again.
 define with_server
 	rm -rf /tmp/origoa-$(1).git; \
-	./bin/origoad -repo /tmp/origoa-$(1).git -addr 127.0.0.1:$(2) -web web/dist -db "$(ORIGOA_TEST_DSN)" > /tmp/origoa-$(1).log 2>&1 & pid=$$!; \
+	./bin/origoad -repo /tmp/origoa-$(1).git -addr 127.0.0.1:$(2) -web web/dist -db "$(ORIGOA_E2E_DSN)" > /tmp/origoa-$(1).log 2>&1 & pid=$$!; \
 	for i in $$(seq 1 50); do curl -sf http://127.0.0.1:$(2)/api/repository >/dev/null && break; sleep 0.2; done; \
 	$(3); status=$$?; \
 	kill $$pid 2>/dev/null; rm -rf /tmp/origoa-$(1).git; exit $$status

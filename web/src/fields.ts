@@ -116,7 +116,7 @@ export class FieldEditor extends LitElement {
       return html`<div class="multi">${opts.map((o) => html`<label><input type="checkbox" .checked=${cur.includes(o.value)} ?disabled=${this.readonly}
         @change=${(e: Event) => toggle(o.value, (e.target as HTMLInputElement).checked)} />${o.label || o.value}</label>`)}
         ${f.extendable ? html`<input type="text" placeholder="add value…" style="width:140px" @keydown=${(e: KeyboardEvent) => {
-          if (e.key === "Enter") { const t = e.target as HTMLInputElement; if (t.value.trim()) { toggle(t.value.trim(), true); t.value = ""; } }
+          if (e.key === "Enter") { e.preventDefault(); const t = e.target as HTMLInputElement; if (t.value.trim()) { toggle(t.value.trim(), true); t.value = ""; } }
         }} />` : nothing}</div>`;
     }
     const v = this.value == null ? "" : String(this.value);
@@ -142,7 +142,7 @@ export class FieldEditor extends LitElement {
       }
     }
     const pick = () => {
-      store.set({ dialog: { kind: "pick", title: `Select ${this.field.name || this.field.id}`, types: this.field.targetTypes, onPick: (s: Summary) => {
+      store.set({ picker: { kind: "pick", title: `Select ${this.field.name || this.field.id}`, types: this.field.targetTypes, onPick: (s: Summary) => {
         if (multiple) this.emit([...new Set([...cur, s.guid])]);
         else this.emit(s.guid);
       } } });
@@ -150,8 +150,8 @@ export class FieldEditor extends LitElement {
     const remove = (g: string) => (multiple ? this.emit(cur.filter((x) => x !== g).length ? cur.filter((x) => x !== g) : null) : this.emit(null));
     return html`<div>
       ${cur.map((g) => html`<span class="ref-chip"><a href=${"/artifact/" + g} @click=${(e: Event) => { e.preventDefault(); this.dispatchEvent(new CustomEvent("open-artifact", { detail: g, bubbles: true })); }}>${label(this.refCache.get(g)) === "(missing)" ? g.slice(0, 8) + "…" : label(this.refCache.get(g))}</a>
-        ${this.readonly ? nothing : html`<button title="remove" @click=${() => remove(g)}>✕</button>`}</span>`)}
-      ${this.readonly ? nothing : html`<button class="btn sm" @click=${pick}>${multiple || !cur.length ? "＋ Select…" : "Change…"}</button>`}
+        ${this.readonly ? nothing : html`<button type="button" title="remove" @click=${() => remove(g)}>✕</button>`}</span>`)}
+      ${this.readonly ? nothing : html`<button type="button" class="btn sm" @click=${pick}>${multiple || !cur.length ? "＋ Select…" : "Change…"}</button>`}
     </div>`;
   }
 }

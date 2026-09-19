@@ -21,7 +21,9 @@ export class Sidebar extends LitElement {
   @state() private q = "";
   private lastTick = -1;
   private lastFolder: string | null = null;
+  private lastRouteQ: string | null = null;
   private timer = 0;
+  private rootLoading: Promise<void> = Promise.resolve();
 
   override createRenderRoot() { return this; }
   override connectedCallback() {
@@ -38,15 +40,21 @@ export class Sidebar extends LitElement {
         this.expandTo(s.route.folder);
         this.loadTypes(s.route.folder);
       }
-      if (s.route.q !== this.q) this.q = s.route.q;
+      if (s.route.q !== this.lastRouteQ) { this.lastRouteQ = s.route.q; this.q = s.route.q; } // never wipe text being typed
       this.requestUpdate();
     });
   }
   override disconnectedCallback() { this.unsub?.(); super.disconnectedCallback(); }
 
   private async reloadAll() {
-    this.root = { ...this.root, children: null };
-    await this.load(this.root);
+    // Serialize with expandTo: a folder change arriving while the tree is
+    // being reloaded must expand the new tree, not the one being replaced.
+    const run = async () => {
+      this.root = { ...this.root, children: null };
+      await this.load(this.root);
+    };
+    this.rootLoading = this.rootLoading.then(run, run);
+    await this.rootLoading;
     await this.expandTo(this.s.route.folder);
     this.loadTypes(this.s.route.folder);
   }
@@ -62,6 +70,7 @@ export class Sidebar extends LitElement {
   }
 
   private async expandTo(folder: string) {
+    await this.rootLoading;
     if (!this.root.children) await this.load(this.root);
     let cur = this.root;
     const parts = folder.split("/").filter(Boolean);

@@ -21,20 +21,25 @@ export class Dialogs extends LitElement {
     window.addEventListener("keydown", this.onKey);
   }
   override disconnectedCallback() { this.unsub?.(); window.removeEventListener("keydown", this.onKey); super.disconnectedCallback(); }
-  private onKey = (e: KeyboardEvent) => { if (e.key === "Escape" && this.s?.dialog) store.set({ dialog: null }); };
+  private onKey = (e: KeyboardEvent) => {
+    if (e.key !== "Escape") return;
+    if (this.s?.picker) { const c = this.s.picker.onCancel as (() => void) | undefined; store.set({ picker: null }); c?.(); }
+    else if (this.s?.dialog) store.set({ dialog: null });
+  };
 
   override render() {
     const d = this.s?.dialog;
-    if (!d) return nothing;
+    const p = this.s?.picker;
     let body;
-    switch (d.kind) {
+    switch (d?.kind) {
       case "new": body = html`<origoa-new-dialog .dialog=${d}></origoa-new-dialog>`; break;
-      case "pick": body = html`<origoa-picker .dialog=${d}></origoa-picker>`; break;
       case "confirm": body = this.confirm(d); break;
       default: body = nothing;
     }
-    return html`<div class="backdrop" @click=${(e: Event) => { if (e.target === e.currentTarget) store.set({ dialog: null }); }}>
-      <div class="dialog" role="dialog" aria-modal="true">${body}</div></div>`;
+    return html`${d ? html`<div class="backdrop" @click=${(e: Event) => { if (e.target === e.currentTarget) store.set({ dialog: null }); }}>
+        <div class="dialog" role="dialog" aria-modal="true">${body}</div></div>` : nothing}
+      ${p ? html`<div class="backdrop picker-layer" @click=${(e: Event) => { if (e.target === e.currentTarget) { const c = p.onCancel as (() => void) | undefined; store.set({ picker: null }); c?.(); } }}>
+        <div class="dialog" role="dialog" aria-modal="true"><origoa-picker .dialog=${p}></origoa-picker></div></div>` : nothing}`;
   }
 
   private confirm(d: Dialog) {
@@ -179,11 +184,9 @@ export class NewDialog extends LitElement {
   }
 
   private pickArtifact(which: "base" | "target", types?: string[], kinds?: Kind[]) {
-    const back = this.dialog;
-    store.set({ dialog: { kind: "pick", title: which === "base" ? "Select artifact" : "Select target", types, kinds, onPick: (s: Summary) => {
+    store.set({ picker: { kind: "pick", title: which === "base" ? "Select artifact" : "Select target", types, kinds, onPick: (s: Summary) => {
       if (which === "base") { this.base = s.guid; this.baseLabel = label(s); } else { this.target = s.guid; this.targetLabel = label(s); }
-      store.set({ dialog: back });
-    }, onCancel: () => store.set({ dialog: back }) } });
+    } } });
   }
 
   private pickType() {
@@ -246,9 +249,9 @@ export class Picker extends LitElement {
       <div class="picker-results">
         ${this.busy && !this.results.length ? html`<div class="empty-state">Searching…</div>` : nothing}
         ${!this.busy && !this.results.length ? html`<div class="empty-state">No matching artifacts</div>` : nothing}
-        ${this.results.filter((r) => r.guid !== exclude).map((r) => html`<div class="row" data-guid=${r.guid} @click=${() => { (this.dialog.onPick as (s: Summary) => void)(r); if (store.state.dialog === this.dialog) store.set({ dialog: null }); }}>
+        ${this.results.filter((r) => r.guid !== exclude).map((r) => html`<div class="row" data-guid=${r.guid} @click=${() => { store.set({ picker: null }); (this.dialog.onPick as (s: Summary) => void)(r); }}>
           ${kindIcon(r.kind)}${r.hid ? html`<span class="hid">${r.hid}</span>` : nothing}<span class="grow">${r.title}</span><span class="muted small">${r.type} · ${r.folder || "/"}</span></div>`)}
       </div>
-      <div class="foot"><button class="btn" @click=${() => { const c = this.dialog.onCancel as (() => void) | undefined; store.set({ dialog: null }); c?.(); }}>Cancel</button></div>`;
+      <div class="foot"><button class="btn" @click=${() => { const c = this.dialog.onCancel as (() => void) | undefined; store.set({ picker: null }); c?.(); }}>Cancel</button></div>`;
   }
 }

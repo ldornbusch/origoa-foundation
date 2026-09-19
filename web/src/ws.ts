@@ -1,3 +1,4 @@
+import { api } from "./api";
 import { store } from "./store";
 import type { ProjectionStatus } from "./types";
 
@@ -42,6 +43,7 @@ export function connectSession() {
         break;
       case "commit":
         store.refresh();
+        api.status().then((st) => store.set({ status: st })).catch(() => undefined);
         if (msg.op === "external") store.toast("Repository updated externally", "info");
         break;
       case "status":

@@ -80,6 +80,8 @@ jobs:
           PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: 1
       - name: Install Playwright browser
         run: cd web && npx playwright install --with-deps chromium
+      - name: Create the database for the temporary servers
+        run: PGPASSWORD=postgres psql -h 127.0.0.1 -U postgres -c 'CREATE DATABASE origoa_e2e'
       - name: REST end-to-end
         run: make e2e
       - name: Playwright UI tests

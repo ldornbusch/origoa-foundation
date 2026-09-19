@@ -207,12 +207,12 @@ origoa-document { display: grid; grid-template-columns: minmax(0, 1fr) auto; min
 .doc-page { max-width: 820px; margin: 0 auto; background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 44px 56px; min-height: 60vh; }
 .doc-page h1.doc-title { font-size: 26px; margin-bottom: 20px; outline: none; }
 .blocks { display: flex; flex-direction: column; gap: 4px; }
-.block-wrap { position: relative; border-radius: 6px; padding: 2px 4px 2px 28px; }
+.block-wrap { position: relative; border-radius: 6px; padding: 2px 4px 2px 12px; margin-top: 2px; }
 .block-wrap:hover { background: var(--panel-2); }
 .block-wrap.focused { background: var(--accent-soft); }
-.block-wrap .handle { position: absolute; left: 4px; top: 4px; display: none; gap: 2px; }
-.block-wrap:hover .handle, .block-wrap.focused .handle { display: flex; }
-.handle button { border: none; background: none; cursor: pointer; color: var(--muted); padding: 0 2px; font-size: 12px; }
+.block-wrap > .handle { position: absolute; right: 6px; top: -14px; display: none; gap: 2px; background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 0 4px; box-shadow: var(--shadow); z-index: 2; }
+.block-wrap:hover > .handle, .block-wrap.focused > .handle { display: flex; }
+.handle button { border: none; background: none; cursor: pointer; color: var(--muted); padding: 1px 4px; font-size: 12px; line-height: 18px; }
 .handle button:hover { color: var(--text); }
 .block[contenteditable] { outline: none; min-height: 1.4em; padding: 2px 4px; border-radius: 4px; white-space: pre-wrap; }
 .block[contenteditable]:empty::before { content: attr(data-placeholder); color: var(--muted); }
@@ -234,6 +234,7 @@ origoa-document { display: grid; grid-template-columns: minmax(0, 1fr) auto; min
 
 /* ---- dialogs & toasts ---- */
 .backdrop { position: fixed; inset: 0; background: rgba(10, 14, 30, 0.45); display: grid; place-items: center; z-index: 50; }
+.backdrop.picker-layer { z-index: 55; background: rgba(10, 14, 30, 0.25); }
 .dialog { width: min(720px, 94vw); max-height: 88vh; overflow: auto; background: var(--panel); border-radius: 14px; box-shadow: var(--shadow); padding: 20px 24px; }
 .dialog h2 { font-size: 16px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; }
 .dialog .foot { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }

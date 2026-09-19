@@ -7,6 +7,7 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -119,6 +120,10 @@ func writeError(w http.ResponseWriter, status int, msg string) {
 // never sent.
 func fail(w http.ResponseWriter, err error) {
 	switch {
+	case errors.Is(err, context.Canceled):
+		// The client went away (navigation, abort): nothing to report.
+		writeError(w, 499, "client closed request")
+		return
 	case errors.Is(err, model.ErrNotFound):
 		writeError(w, http.StatusNotFound, strip(err, model.ErrNotFound, "not found"))
 	case errors.Is(err, model.ErrValidation):

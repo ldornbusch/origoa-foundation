@@ -167,6 +167,37 @@ browser injection) added these:
 15. **A double click on Create submitted twice** because the busy flag was only reflected after the
     next render; the handlers now check the flag synchronously.
 
+The extended browser suites (every field type through the generated form, attachments, the block
+editor, navigation and deep links, relationships, workflows, overlays, HID renames, moves, and two
+users in separate browser contexts) added these:
+
+16. **Buttons inside the generated form submitted it.** The reference pickers' "Select…" and the
+    remove buttons lacked `type="button"`, and Enter in the extendable-enum input submitted the
+    form. Picking a reference while creating an artifact created it half-filled.
+17. **The picker replaced the dialog it was opened from**, losing the form state; pickers are now
+    a layer above the current dialog.
+18. **The detail view rendered for one frame between the artifact arriving and its draft being
+    built**, throwing on `draft.title` on every navigation.
+19. **A refresh while typing wiped the draft**: dirtiness was judged before the secondary fetches,
+    so edits made during a refresh looked untouched and were reset. It is now judged after every
+    await, against the view the draft was made from; after a refresh an untouched draft follows the
+    new version (the other user's change becomes visible), a touched one is kept with its ETag.
+20. **Under a continuous stream of repository events a refresh never completed**, each one being
+    superseded by the next; soft refreshes are now coalesced (one in flight, one queued).
+21. **Typing in the search box was wiped by any store update** arriving during the debounce; the
+    box only adopts the URL's query when that query itself changes.
+22. **The block editor's handle toolbar overlapped the block text** and intercepted clicks; it now
+    floats above the block. Typing in a block did not mark the document dirty until blur; text is
+    bound with `live()` so re-renders never move the caret and input marks the draft dirty.
+23. **The sidebar reloaded its tree while a deep link was expanding it**, expanding the tree that
+    was being replaced; reloads and expansions are serialized.
+24. **The header status only refreshed every 15 s**; it now also refreshes on commit events.
+25. **A burst of 120 concurrent creates exhausted the retry loop**; writers within one process are
+    now queued on a mutex (Git commits are serial anyway) while processes stay coordinated by the
+    two compare-and-swaps.
+26. A test-harness lesson recorded as a rule: two servers with different repositories must never
+    share one projection database; `make e2e` and `make test-ui` use their own.
+
 ## 5. Remaining gaps
 
 1. Pagination is offset-based (`limit`/`offset`); fine for MVP volumes.
