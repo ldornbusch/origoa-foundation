@@ -177,3 +177,30 @@ test("status indicator, user name and reindex", async ({ page }) => {
   await page.locator("[data-test=search]").fill(`Bulk 7 ${id}`);
   await expect(page.locator("table.grid tbody tr")).toHaveCount(1);
 });
+
+test("the divider between overview and detail can be dragged, keyed, reset, and is remembered", async ({ page }) => {
+  await page.goto(`/folder/${folder}/alpha`);
+  const overview = page.locator("groundsill-overview");
+  const bar = page.locator("[data-test=splitter]");
+  const height = async () => (await overview.boundingBox())!.height;
+  const initial = await height();
+  const box = (await bar.boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + 3);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2, box.y + 153, { steps: 5 });
+  await page.mouse.up();
+  expect(await height()).toBeGreaterThan(initial + 120);
+  const dragged = await height();
+  await page.reload();
+  await expect.poll(height).toBeCloseTo(dragged, -1);
+  await bar.focus();
+  await page.keyboard.press("ArrowUp");
+  expect(await height()).toBeLessThan(dragged);
+  await bar.dblclick();
+  await expect.poll(height).toBeCloseTo(initial, -1);
+  // hidden when the detail view is expanded
+  await page.goto(`/artifact/${guids.a}?x=1`);
+  await expect(page.locator("groundsill-detail h2")).toHaveText(`Alpha one ${id}`);
+  await expect(bar).toBeHidden();
+  expect((await page.locator("groundsill-detail").boundingBox())!.height).toBeGreaterThan(300);
+});
