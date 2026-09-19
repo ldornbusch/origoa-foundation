@@ -114,3 +114,48 @@ test("the navigation is rooted at the current folder, with an up row and a filte
   await page.locator("[data-test=nav-up]").click();
   await expect(page.locator("[data-test=nav-up]")).toHaveCount(0);
 });
+
+test("the New dialog follows the typed folder's schema scope", async ({ page }) => {
+  // a type that exists only below this test's folder
+  await page.goto(`/folder/${folder}/specs`);
+  await page.locator("table.grid tbody tr").first().waitFor();
+  await openNewReq(page);
+  const input = page.locator("#new-path");
+  await expect(input).toHaveValue(`${folder}/specs`);
+  await expect(page.locator("[data-test=scope-notice]")).toHaveCount(0);
+  await expect(page.locator("[data-test=create]")).toBeEnabled();
+
+  // outside the scope: the type is not defined there, and the save is held back
+  await input.fill(`${folder}-elsewhere/x`);
+  await expect(page.locator("[data-test=scope-notice]")).toContainText("not defined");
+  await expect(page.locator("[data-test=create]")).toBeDisabled();
+
+  // back inside: the notice goes and the form is usable again
+  await input.fill(`${folder}/specs/deeper`);
+  await expect(page.locator("[data-test=scope-notice]")).toHaveCount(0);
+  await expect(page.locator("[data-test=create]")).toBeEnabled();
+  await page.locator("#new-title").fill(`Deeper ${id}`);
+  await page.locator(".dialog select").first().selectOption("high");
+  await page.locator("[data-test=create]").click();
+  await expect(page.locator("groundsill-detail h2")).toHaveText(`Deeper ${id}`);
+});
+
+test("the overview says when subfolders hold more than the folder itself", async ({ page }) => {
+  const nest = `${folder}/nest`;
+  await post("/entries", { path: nest, type: "req", title: `Nest top ${id}`, fields: { priority: "low" } });
+  for (const sub of ["a", "b", "b/c"]) await post("/entries", { path: `${nest}/${sub}`, type: "req", title: `Nest ${sub} ${id}`, fields: { priority: "low" } });
+  await page.goto(`/folder/${nest}`);
+  await expect(page.locator(".toolbar .hint")).toContainText("1 artifact here");
+  await expect(page.locator("[data-test=show-subtree]")).toHaveText("4 incl. subfolders");
+  // the tree count is the subtree count, and its tooltip says how it splits
+  await page.locator("[data-test=nav-up]").click();
+  const count = page.locator(`.tree .row[data-folder="${nest}"] .count`);
+  await expect(count).toHaveText("4");
+  await expect(count).toHaveAttribute("title", "1 artifact here, 3 artifacts in subfolders");
+  // the link turns the subtree view on
+  await page.locator(`.tree .row[data-folder="${nest}"]`).click();
+  await page.locator("[data-test=show-subtree]").click();
+  await expect(page.locator("[data-test=subtree]")).toBeChecked();
+  await expect(page.locator(".toolbar .hint")).toContainText("4 artifacts incl. subfolders");
+  await expect(page.locator("[data-test=show-subtree]")).toHaveCount(0);
+});

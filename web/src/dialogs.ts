@@ -101,6 +101,11 @@ export class NewDialog extends LitElement {
   @state() private values: Record<string, unknown> = {};
   @state() private busy = false;
   @state() private error = "";
+  /** Set when the chosen type is not visible at the typed folder: the save would be refused. */
+  @state() private scopeError = "";
+  private listed = false; // the chosen schema came from the visible types, not typed by hand
+  private scopeTimer = 0;
+  private scopeSeq = 0;
 
   override createRenderRoot() { return this; }
 
@@ -111,7 +116,10 @@ export class NewDialog extends LitElement {
     api.types(this.path).then((r) => {
       this.types = r.types.filter((t) => !this.dialog.kinds || (this.dialog.kinds as Kind[]).includes(t.kind));
       this.loading = false;
-      if (preset) this.choose(this.types.find((t) => t.type === preset) ?? { type: preset, kind: (this.dialog.kinds as Kind[])?.[0] ?? "entry" });
+      if (preset) {
+        const found = this.types.find((t) => t.type === preset);
+        this.choose(found ?? { type: preset, kind: (this.dialog.kinds as Kind[])?.[0] ?? "entry" }, !!found);
+      }
     }).catch((e) => { this.error = String(e.message); this.loading = false; });
     if (this.dialog.subject) {
       this.target = String(this.dialog.subject);
@@ -119,18 +127,62 @@ export class NewDialog extends LitElement {
     }
   }
 
-  private choose(s: Schema) {
+  override disconnectedCallback() { window.clearTimeout(this.scopeTimer); super.disconnectedCallback(); }
+
+  private choose(s: Schema, listed = true) {
     this.schema = s;
+    this.listed = listed;
     this.values = {};
     for (const f of s.fields ?? []) if (f.default != null) this.values[f.id] = f.default;
     this.error = "";
+    this.scopeError = "";
     this.updateComplete.then(() => (this.querySelector<HTMLInputElement>("#new-title, #new-text"))?.focus());
+  }
+
+  // Schemas apply lexically along the path, so a folder typed into another
+  // scope may see a different schema for the chosen type, or none at all.
+  // Follow the typed folder: refresh the visible types, rebuild the form from
+  // the schema effective there, and say so before the server refuses the save.
+  private onFolder(path: string) {
+    this.path = path;
+    window.clearTimeout(this.scopeTimer);
+    this.scopeTimer = window.setTimeout(() => this.followScope(), 250);
+  }
+
+  private async followScope() {
+    const seq = ++this.scopeSeq;
+    const path = this.path;
+    let types: Schema[];
+    try {
+      types = (await api.types(path)).types.filter((t) => !this.dialog.kinds || (this.dialog.kinds as Kind[]).includes(t.kind));
+    } catch {
+      return; // the server validates on save either way
+    }
+    if (seq !== this.scopeSeq || path !== this.path) return;
+    this.types = types;
+    const chosen = this.schema;
+    if (!chosen || !this.listed) return; // a hand-typed type id is not checked against the scope
+    const here = types.find((t) => t.type === chosen.type);
+    if (!here) {
+      this.scopeError = `Type ${displayName(chosen, chosen.type)} is not defined at ${path || "the repository root"}; choose another folder or type.`;
+      return;
+    }
+    this.scopeError = "";
+    if (JSON.stringify(here) === JSON.stringify(chosen)) return;
+    // a different schema for the same type: keep the values of fields that still exist
+    const keep: Record<string, unknown> = {};
+    for (const f of here.fields ?? []) {
+      if (f.id in this.values) keep[f.id] = this.values[f.id];
+      else if (f.default != null) keep[f.id] = f.default;
+    }
+    this.schema = here;
+    this.values = keep;
   }
 
   private kindOf(): Kind { return this.schema?.kind ?? "entry"; }
 
   private async create() {
-    if (!this.schema || this.busy) return; // a second click before re-render must be a no-op
+    if (!this.schema || this.busy || this.scopeError) return; // a second click before re-render must be a no-op
     this.busy = true;
     this.error = "";
     const kind = this.kindOf();
@@ -182,7 +234,8 @@ export class NewDialog extends LitElement {
           <div class="field"><label for="new-title">Title<span class="req">*</span></label><div class="value">
             <input id="new-title" type="text" required .value=${this.titleText} @input=${(e: Event) => (this.titleText = (e.target as HTMLInputElement).value)} /></div></div>
           <div class="field"><label for="new-path">Folder</label><div class="value">
-            <groundsill-folder-field inputId="new-path" test="new-path" .value=${this.path} @folder-change=${(e: CustomEvent<string>) => (this.path = e.detail)}></groundsill-folder-field>
+            <groundsill-folder-field inputId="new-path" test="new-path" .value=${this.path} @folder-change=${(e: CustomEvent<string>) => this.onFolder(e.detail)}></groundsill-folder-field>
+            ${this.scopeError ? html`<div class="notice error" data-test="scope-notice" role="alert">${this.scopeError}</div>` : nothing}
             <div class="help">Folders organize; identity stays with the GUID. Schemas apply lexically along this path.</div></div></div>
           <div class="field"><label for="new-hid">HID</label><div class="value">
             <input id="new-hid" type="text" .value=${this.hid} placeholder=${s.hid ? `auto: ${s.hid.prefix}${s.hid.separator ?? "-"}n` : "optional, e.g. REQ-42"} @input=${(e: Event) => (this.hid = (e.target as HTMLInputElement).value)} /></div></div>
@@ -211,7 +264,7 @@ export class NewDialog extends LitElement {
         ${s.workflows?.length ? html`<div class="help" style="margin-top:8px">Workflows ${s.workflows.join(", ")} start in their initial state.</div>` : nothing}
         <div class="foot">
           <button type="button" class="btn" @click=${() => store.set({ dialog: null })}>Cancel</button>
-          <button type="submit" class="btn primary" ?disabled=${this.busy} data-test="create">${this.busy ? "Creating…" : "Create"}</button>
+          <button type="submit" class="btn primary" ?disabled=${this.busy || !!this.scopeError} data-test="create">${this.busy ? "Creating…" : "Create"}</button>
         </div>
       </form>`;
   }
