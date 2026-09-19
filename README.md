@@ -196,7 +196,8 @@ verified on every run rather than assumed.
 | [docs/INSTALL.md](docs/INSTALL.md) | Install, run, define a domain, deploy |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Source tour and how a request flows |
 | [DESIGN_NOTES.md](DESIGN_NOTES.md) | Design guide vs. implementation: adopted, adapted, deferred, and what testing found |
-| [docs/ROADMAP.md](docs/ROADMAP.md) | What is still missing, ranked by how much it blocks a deployment |
+| [docs/ROADMAP.md](docs/ROADMAP.md) | What is still missing, ranked by how much it blocks a deployment, with a plan for each item |
+| [docs/Groundsill_Roadmap.docx](docs/Groundsill_Roadmap.docx) ([PDF](docs/Groundsill_Roadmap.pdf)) | The roadmap as a specification document in the format of the design guide, for sharing |
 
 ## License
 
