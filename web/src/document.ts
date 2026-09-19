@@ -5,7 +5,7 @@ import { navigate } from "./router";
 import { store, type State } from "./store";
 import type { Block, CommentView, LogEntry, Relationships, Schema, Summary, View } from "./types";
 import { announceEdit } from "./ws";
-import { blockId, deepEqual, fmtTime, kindIcon, label, relTime } from "./util";
+import { blockId, deepEqual, fmtTime, kindIcon, label, relTime, safeImageSrc } from "./util";
 import "./fields";
 
 // Document view (design guide §7.6, §9.5): a distraction-free editor of
@@ -103,7 +103,7 @@ export class DocumentView extends LitElement {
   }
 
   private async save() {
-    if (!this.view) return;
+    if (!this.view || this.busy) return;
     this.busy = true;
     this.error = "";
     const d = this.view.data as Record<string, unknown>;
@@ -261,8 +261,11 @@ export class DocumentView extends LitElement {
         body = html`<div class="blocks">${(b.items ?? []).map((c) => html`<div class="list-item">${this.block(c, depth + 1)}</div>`)}</div>`;
         break;
       case "image":
-        body = html`<img class="doc-image" src=${b.src?.startsWith("http") || b.src?.startsWith("/") ? b.src : api.fileUrl(this.guid, b.src ?? "")} alt=${b.alt ?? ""} />
-          <div class="muted small">${b.alt ?? b.src}</div>`;
+        {
+          const src = safeImageSrc(b.src, (name) => api.fileUrl(this.guid, name));
+          body = src ? html`<img class="doc-image" src=${src} alt=${b.alt ?? ""} /><div class="muted small">${b.alt ?? b.src}</div>`
+            : html`<div class="notice error">Image source not allowed: <code>${b.src}</code></div>`;
+        }
         break;
       case "entry": {
         const meta = this.entries.get(b.guid ?? "");

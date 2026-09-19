@@ -190,6 +190,16 @@ func setETag(w http.ResponseWriter, etag string) {
 	}
 }
 
+// guidParam validates the {guid} path value; invalid values are 404s.
+func guidParam(w http.ResponseWriter, r *http.Request) (string, bool) {
+	g, err := model.NormalizeGUID(r.PathValue("guid"))
+	if err != nil {
+		writeError(w, http.StatusNotFound, "not found")
+		return "", false
+	}
+	return g, true
+}
+
 func intParam(r *http.Request, name string, def int) int {
 	if v := r.URL.Query().Get(name); v != "" {
 		if n, err := strconv.Atoi(v); err == nil {
@@ -251,7 +261,11 @@ func collection(k model.Kind) string {
 }
 
 func (s *Server) get(w http.ResponseWriter, r *http.Request, kind model.Kind) {
-	v, err := s.F.Get(r.Context(), r.PathValue("guid"))
+	guid, ok := guidParam(w, r)
+	if !ok {
+		return
+	}
+	v, err := s.F.Get(r.Context(), guid)
 	if err != nil {
 		fail(w, err)
 		return
@@ -277,7 +291,10 @@ func ifNoneMatch(r *http.Request) string {
 }
 
 func (s *Server) update(w http.ResponseWriter, r *http.Request, kind model.Kind) {
-	guid := r.PathValue("guid")
+	guid, ok := guidParam(w, r)
+	if !ok {
+		return
+	}
 	if kind != "" {
 		if !s.checkKind(w, r, guid, kind) {
 			return
@@ -297,7 +314,7 @@ func (s *Server) update(w http.ResponseWriter, r *http.Request, kind model.Kind)
 }
 
 func (s *Server) checkKind(w http.ResponseWriter, r *http.Request, guid string, kind model.Kind) bool {
-	loc, err := s.F.DB.Locate(r.Context(), strings.ToLower(guid))
+	loc, err := s.F.DB.Locate(r.Context(), guid)
 	if err != nil {
 		fail(w, err)
 		return false
@@ -310,11 +327,14 @@ func (s *Server) checkKind(w http.ResponseWriter, r *http.Request, guid string, 
 }
 
 func (s *Server) delete(w http.ResponseWriter, r *http.Request, kind model.Kind) {
-	guid := r.PathValue("guid")
+	guid, ok := guidParam(w, r)
+	if !ok {
+		return
+	}
 	if kind != "" && !s.checkKind(w, r, guid, kind) {
 		return
 	}
-	if err := s.F.DeleteArtifact(r.Context(), strings.ToLower(guid), ifMatch(r)); err != nil {
+	if err := s.F.DeleteArtifact(r.Context(), guid, ifMatch(r)); err != nil {
 		fail(w, err)
 		return
 	}
@@ -322,7 +342,11 @@ func (s *Server) delete(w http.ResponseWriter, r *http.Request, kind model.Kind)
 }
 
 func (s *Server) schemaOf(w http.ResponseWriter, r *http.Request) {
-	eff, loc, err := s.F.SchemaOf(r.Context(), strings.ToLower(r.PathValue("guid")))
+	guid, ok := guidParam(w, r)
+	if !ok {
+		return
+	}
+	eff, loc, err := s.F.SchemaOf(r.Context(), guid)
 	if err != nil {
 		fail(w, err)
 		return
@@ -331,7 +355,11 @@ func (s *Server) schemaOf(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) overlay(w http.ResponseWriter, r *http.Request) {
-	ov, err := s.F.Overlay(r.Context(), r.PathValue("guid"))
+	guid, ok := guidParam(w, r)
+	if !ok {
+		return
+	}
+	ov, err := s.F.Overlay(r.Context(), guid)
 	if err != nil {
 		fail(w, err)
 		return
@@ -340,7 +368,11 @@ func (s *Server) overlay(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) workflows(w http.ResponseWriter, r *http.Request) {
-	ws, err := s.F.Workflows(r.Context(), r.PathValue("guid"))
+	guid, ok := guidParam(w, r)
+	if !ok {
+		return
+	}
+	ws, err := s.F.Workflows(r.Context(), guid)
 	if err != nil {
 		fail(w, err)
 		return
@@ -349,11 +381,15 @@ func (s *Server) workflows(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) transition(w http.ResponseWriter, r *http.Request) {
+	guid, ok := guidParam(w, r)
+	if !ok {
+		return
+	}
 	body, ok := readObject(w, r)
 	if !ok {
 		return
 	}
-	v, err := s.F.Transition(r.Context(), strings.ToLower(r.PathValue("guid")), body.String("workflow"), body.String("to"), ifMatch(r))
+	v, err := s.F.Transition(r.Context(), guid, body.String("workflow"), body.String("to"), ifMatch(r))
 	if err != nil {
 		fail(w, err)
 		return
@@ -363,7 +399,11 @@ func (s *Server) transition(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) relationships(w http.ResponseWriter, r *http.Request) {
-	rel, err := s.F.Relationships(r.Context(), strings.ToLower(r.PathValue("guid")))
+	guid, ok := guidParam(w, r)
+	if !ok {
+		return
+	}
+	rel, err := s.F.Relationships(r.Context(), guid)
 	if err != nil {
 		fail(w, err)
 		return
@@ -372,7 +412,11 @@ func (s *Server) relationships(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) comments(w http.ResponseWriter, r *http.Request) {
-	c, err := s.F.Comments(r.Context(), strings.ToLower(r.PathValue("guid")))
+	guid, ok := guidParam(w, r)
+	if !ok {
+		return
+	}
+	c, err := s.F.Comments(r.Context(), guid)
 	if err != nil {
 		fail(w, err)
 		return
@@ -381,7 +425,11 @@ func (s *Server) comments(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) history(w http.ResponseWriter, r *http.Request) {
-	h, err := s.F.History(r.Context(), r.PathValue("guid"), intParam(r, "limit", 200))
+	guid, ok := guidParam(w, r)
+	if !ok {
+		return
+	}
+	h, err := s.F.History(r.Context(), guid, intParam(r, "limit", 200))
 	if err != nil {
 		fail(w, err)
 		return
@@ -390,11 +438,15 @@ func (s *Server) history(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) move(w http.ResponseWriter, r *http.Request) {
+	guid, ok := guidParam(w, r)
+	if !ok {
+		return
+	}
 	body, ok := readObject(w, r)
 	if !ok {
 		return
 	}
-	v, err := s.F.MoveArtifact(r.Context(), strings.ToLower(r.PathValue("guid")), body.String("path"))
+	v, err := s.F.MoveArtifact(r.Context(), guid, body.String("path"))
 	if err != nil {
 		fail(w, err)
 		return
@@ -404,7 +456,11 @@ func (s *Server) move(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getFile(w http.ResponseWriter, r *http.Request) {
-	data, sha, err := s.F.Attachment(r.Context(), strings.ToLower(r.PathValue("guid")), r.PathValue("name"))
+	guid, ok := guidParam(w, r)
+	if !ok {
+		return
+	}
+	data, sha, err := s.F.Attachment(r.Context(), guid, r.PathValue("name"))
 	if err != nil {
 		fail(w, err)
 		return
@@ -417,12 +473,16 @@ func (s *Server) getFile(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) putFile(w http.ResponseWriter, r *http.Request) {
+	guid, ok := guidParam(w, r)
+	if !ok {
+		return
+	}
 	data, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxAttachment))
 	if err != nil {
 		writeError(w, http.StatusRequestEntityTooLarge, "attachment too large")
 		return
 	}
-	if err := s.F.PutAttachment(r.Context(), strings.ToLower(r.PathValue("guid")), r.PathValue("name"), data); err != nil {
+	if err := s.F.PutAttachment(r.Context(), guid, r.PathValue("name"), data); err != nil {
 		fail(w, err)
 		return
 	}
@@ -430,7 +490,11 @@ func (s *Server) putFile(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) deleteFile(w http.ResponseWriter, r *http.Request) {
-	if err := s.F.DeleteAttachment(r.Context(), strings.ToLower(r.PathValue("guid")), r.PathValue("name")); err != nil {
+	guid, ok := guidParam(w, r)
+	if !ok {
+		return
+	}
+	if err := s.F.DeleteAttachment(r.Context(), guid, r.PathValue("name")); err != nil {
 		fail(w, err)
 		return
 	}
@@ -564,7 +628,12 @@ func (s *Server) relocate(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) hid(w http.ResponseWriter, r *http.Request) {
-	recs, err := s.F.HIDLookup(r.Context(), r.PathValue("hid"))
+	hid := r.PathValue("hid")
+	if err := model.ValidateHID(hid); err != nil {
+		fail(w, err)
+		return
+	}
+	recs, err := s.F.HIDLookup(r.Context(), hid)
 	if err != nil {
 		fail(w, err)
 		return
@@ -577,7 +646,16 @@ func (s *Server) hid(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) deleted(w http.ResponseWriter, r *http.Request) {
-	d, err := s.F.DB.Deleted(r.Context(), strings.ToLower(r.URL.Query().Get("guid")), intParam(r, "limit", 200))
+	filter := ""
+	if q := r.URL.Query().Get("guid"); q != "" {
+		g, err := model.NormalizeGUID(q)
+		if err != nil {
+			fail(w, err)
+			return
+		}
+		filter = g
+	}
+	d, err := s.F.DB.Deleted(r.Context(), filter, intParam(r, "limit", 200))
 	if err != nil {
 		fail(w, err)
 		return

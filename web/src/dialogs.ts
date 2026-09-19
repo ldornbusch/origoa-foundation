@@ -92,7 +92,7 @@ export class NewDialog extends LitElement {
   private kindOf(): Kind { return this.schema?.kind ?? "entry"; }
 
   private async create() {
-    if (!this.schema) return;
+    if (!this.schema || this.busy) return; // a second click before re-render must be a no-op
     this.busy = true;
     this.error = "";
     const kind = this.kindOf();

@@ -115,7 +115,7 @@ export class Detail extends LitElement {
   }
 
   private async save() {
-    if (!this.view || !this.draft) return;
+    if (!this.view || !this.draft || this.busy) return;
     this.busy = true;
     this.error = "";
     const d = this.view.data as Record<string, unknown>;
@@ -360,11 +360,14 @@ export class Detail extends LitElement {
 
   private commentSection() {
     const byParent = new Map<string, CommentView[]>();
+    const known = new Set(this.comments.map((c) => c.meta.guid));
     for (const c of this.comments) {
-      const p = String(c.data?.parent ?? "");
+      let p = String(c.data?.parent ?? "");
+      if (p && (!known.has(p) || p === c.meta.guid)) p = ""; // orphaned reply: show at the root
       byParent.set(p, [...(byParent.get(p) ?? []), c]);
     }
-    const render = (parent: string, depth: number): TemplateResult[] => (byParent.get(parent) ?? []).map((c) => html`<div class="comment ${depth ? "reply" : ""}" data-comment=${c.meta.guid}>
+    const seen = new Set<string>();
+    const render = (parent: string, depth: number): TemplateResult[] => (byParent.get(parent) ?? []).filter((c) => !seen.has(c.meta.guid) && seen.add(c.meta.guid) && depth < 50).map((c) => html`<div class="comment ${depth ? "reply" : ""}" data-comment=${c.meta.guid}>
       <div class="who"><b>${c.meta.author || "anonymous"}</b> · ${fmtTime(c.meta.created)} ${c.data?.type && c.data.type !== "comment" ? html`<span class="pill">${String(c.data.type)}</span>` : nothing}
         <a href="#" @click=${(e: Event) => { e.preventDefault(); this.replyTo = c.meta.guid; this.querySelector<HTMLTextAreaElement>("#comment-text")?.focus(); }}>reply</a></div>
       <div class="text">${String(c.data?.text ?? "")}</div>

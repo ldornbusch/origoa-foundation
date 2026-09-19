@@ -3,6 +3,7 @@ package model
 import (
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/thomdehoog/origoa/internal/ojson"
 )
@@ -101,6 +102,9 @@ func (a *Artifact) Validate() error {
 		if strings.TrimSpace(a.Title) == "" {
 			return Invalid("title must not be empty")
 		}
+		if err := ValidateText("title", a.Title, MaxTitleLen); err != nil {
+			return err
+		}
 		if a.HID != "" {
 			if err := ValidateHID(a.HID); err != nil {
 				return err
@@ -130,11 +134,40 @@ func (a *Artifact) Validate() error {
 		if !IsGUID(a.Subject) {
 			return Invalid("comment needs a subject GUID")
 		}
+		if err := ValidateText("text", a.Text, MaxTextLen); err != nil {
+			return err
+		}
+		if err := ValidateText("author", a.Author, MaxTitleLen); err != nil {
+			return err
+		}
 		if a.Parent != "" && !IsGUID(a.Parent) {
 			return Invalid("comment parent must be a GUID")
 		}
 		if strings.TrimSpace(a.Text) == "" {
 			return Invalid("comment text must not be empty")
+		}
+	}
+	return nil
+}
+
+// Size limits for human-entered text.
+const (
+	MaxTitleLen = 1024
+	MaxTextLen  = 256 * 1024
+)
+
+// ValidateText rejects control characters (other than tab and newlines)
+// and over-long values in titles and texts.
+func ValidateText(what, s string, max int) error {
+	if len(s) > max {
+		return Invalid("%s longer than %d bytes", what, max)
+	}
+	for _, r := range s {
+		if r == '\t' || r == '\n' || r == '\r' {
+			continue
+		}
+		if r < 0x20 || r == 0x7f || r == unicode.ReplacementChar {
+			return Invalid("%s contains control or invalid characters", what)
 		}
 	}
 	return nil

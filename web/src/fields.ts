@@ -3,7 +3,7 @@ import { customElement, property } from "lit/decorators.js";
 import { api } from "./api";
 import { store } from "./store";
 import type { Attachment, Field, Summary } from "./types";
-import { label } from "./util";
+import { label, safeHref } from "./util";
 
 // Schema-driven field editor (design guide §4.6, §7.10): one element per
 // field definition, rendering the right input for the field type and
@@ -79,7 +79,8 @@ export class FieldEditor extends LitElement {
         return this.enumInput();
       case "hyperlink":
         return html`<div style="display:flex;gap:6px">${this.text("url", { placeholder: "https://" })}
-          ${this.value ? html`<a class="btn sm" href=${String(this.value)} target="_blank" rel="noopener">open</a>` : nothing}</div>`;
+          ${safeHref(this.value) ? html`<a class="btn sm" href=${safeHref(this.value)!} target="_blank" rel="noopener noreferrer">open</a>`
+            : this.value ? html`<span class="error small" title="only http(s), ftp and mailto links are rendered">unsafe link</span>` : nothing}</div>`;
       case "reference":
         return this.refInput(false);
       case "references":

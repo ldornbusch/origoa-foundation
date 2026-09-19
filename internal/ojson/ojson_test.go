@@ -110,4 +110,11 @@ func TestRejectsGarbage(t *testing.T) {
 	if _, err := ParseObject([]byte("[1]")); err == nil {
 		t.Error("array accepted as object")
 	}
+	deep := strings.Repeat("[", 300) + strings.Repeat("]", 300)
+	if _, err := Parse([]byte(deep)); err == nil {
+		t.Error("over-deep nesting accepted")
+	}
+	if _, err := Parse([]byte(strings.Repeat("[", 200) + strings.Repeat("]", 200))); err != nil {
+		t.Errorf("reasonable nesting rejected: %v", err)
+	}
 }

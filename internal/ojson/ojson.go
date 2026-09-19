@@ -235,15 +235,26 @@ func ParseObject(data []byte) (*Object, error) {
 	return o, nil
 }
 
+// MaxDepth bounds nesting so hostile documents cannot exhaust the stack.
+const MaxDepth = 256
+
 type parser struct {
-	dec *json.Decoder
-	src []byte
+	dec   *json.Decoder
+	src   []byte
+	depth int
 }
 
 func (p *parser) value() (any, error) {
 	tok, err := p.dec.Token()
 	if err != nil {
 		return nil, err
+	}
+	if d, ok := tok.(json.Delim); ok && (d == '{' || d == '[') {
+		p.depth++
+		if p.depth > MaxDepth {
+			return nil, fmt.Errorf("ojson: nesting deeper than %d", MaxDepth)
+		}
+		defer func() { p.depth-- }()
 	}
 	return p.fromToken(tok)
 }

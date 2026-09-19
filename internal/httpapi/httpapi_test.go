@@ -21,7 +21,10 @@ import (
 type api struct {
 	t   *testing.T
 	srv *httptest.Server
+	s   *Server
 }
+
+func (a *api) Hub() *Hub { return a.s.Hub }
 
 func newAPI(t *testing.T) *api {
 	t.Helper()
@@ -30,9 +33,10 @@ func newAPI(t *testing.T) *api {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { f.Close() })
-	srv := httptest.NewServer(New(f))
+	s := New(f)
+	srv := httptest.NewServer(s)
 	t.Cleanup(srv.Close)
-	return &api{t: t, srv: srv}
+	return &api{t: t, srv: srv, s: s}
 }
 
 type resp struct {

@@ -50,6 +50,8 @@ func ValidateSegment(s string) error {
 		return Invalid("folder segment %q looks like an artifact GUID", s)
 	case s[0] == pathspecMagicSep:
 		return Invalid("folder segment %q must not start with ':'", s)
+	case strings.ContainsAny(s, "/\\"):
+		return Invalid("segment %q must not contain path separators", s)
 	case strings.TrimSpace(s) != s:
 		return Invalid("folder segment %q has leading or trailing whitespace", s)
 	}

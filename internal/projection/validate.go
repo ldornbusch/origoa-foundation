@@ -37,6 +37,12 @@ func (p *DB) Validate(ctx context.Context) ([]Issue, error) {
 	}
 	rows.Close()
 
+	fileIssues, err := p.FileIssues(ctx)
+	if err != nil {
+		return nil, err
+	}
+	issues = append(issues, fileIssues...)
+
 	rows, err = p.sql.QueryContext(ctx, `SELECT path, error FROM config_files WHERE NOT valid ORDER BY path`)
 	if err != nil {
 		return nil, unavailable(err)

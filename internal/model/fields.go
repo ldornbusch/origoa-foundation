@@ -161,8 +161,12 @@ func (f *Field) validateSingle(v any) error {
 			return bad("an RFC 3339 timestamp")
 		}
 	case FieldHID, FieldText, FieldMultiline, FieldRichText, FieldAttachment:
-		if _, ok := v.(string); !ok {
+		s, ok := v.(string)
+		if !ok {
 			return bad("a string")
+		}
+		if err := ValidateText("field "+f.ID, s, MaxTextLen); err != nil {
+			return err
 		}
 	case FieldEnum:
 		s, ok := v.(string)
@@ -182,8 +186,8 @@ func (f *Field) validateSingle(v any) error {
 		if !ok {
 			return bad("a URL")
 		}
-		if u, err := url.Parse(s); err != nil || u.Scheme == "" {
-			return bad("an absolute URL")
+		if !SafeURL(s) {
+			return bad("an http(s), ftp(s) or mailto URL")
 		}
 	case FieldReference:
 		s, ok := v.(string)
@@ -208,6 +212,20 @@ func (f *Field) validateSingle(v any) error {
 		// anything goes
 	}
 	return nil
+}
+
+// SafeURL reports whether s is an absolute URL with a scheme that is safe
+// to render as a link (never javascript:, data:, vbscript:, …).
+func SafeURL(s string) bool {
+	u, err := url.Parse(strings.TrimSpace(s))
+	if err != nil || u.Scheme == "" {
+		return false
+	}
+	switch strings.ToLower(u.Scheme) {
+	case "http", "https", "ftp", "ftps", "mailto":
+		return true
+	}
+	return false
 }
 
 // ReferencedGUIDs extracts GUIDs held by reference fields so the caller can

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"runtime"
+	"sort"
 	"sync"
 	"time"
 
@@ -119,7 +120,7 @@ func (p *DB) phaseIdentity(ctx context.Context, artifacts, attachments, configs 
 	// onto half-built tables.
 	for _, stmt := range []string{
 		`UPDATE repo_state SET processed_hash = '' WHERE id = 1`,
-		`TRUNCATE artifact_fields, artifacts, artifact_files, config_files, hid_history, deleted_artifacts`,
+		`TRUNCATE artifact_fields, artifacts, artifact_files, config_files, hid_history, deleted_artifacts, file_issues`,
 	} {
 		if _, err := tx.ExecContext(ctx, stmt); err != nil {
 			return unavailable(err)
@@ -192,7 +193,7 @@ func (p *DB) phaseFields(ctx context.Context, artifacts, configs []item) error {
 					return unavailable(err)
 				}
 			}
-			if err := p.upsertRecord(ctx, tx, rec, "", time.Time{}); err != nil {
+			if err := p.upsertRecord(ctx, tx, rec, "", time.Time{}, nil); err != nil {
 				tx.Rollback()
 				return err
 			}
@@ -302,34 +303,49 @@ func (p *DB) streamText(ctx context.Context, batch []item) error {
 	}
 	defer tx.Rollback()
 	for _, it := range batch {
-		a, err := model.ParseArtifact(blobs[it.entry.SHA], model.KindEntry)
-		if err != nil {
+		rec := extract(it.match, it.entry.SHA, blobs[it.entry.SHA])
+		if rec.GUID == "" {
 			continue
 		}
-		if _, err := tx.ExecContext(ctx, `UPDATE artifacts SET search_text = $1 WHERE guid = $2`, searchText(a), a.GUID); err != nil {
+		if _, err := tx.ExecContext(ctx, `UPDATE artifacts SET search_text = $1 WHERE guid = $2 AND file_path = $3`, rec.Search, rec.GUID, rec.Path); err != nil {
 			return unavailable(err)
 		}
 	}
 	return unavailable(tx.Commit())
 }
 
+// histEvent is one artifact-file change seen while walking history.
+type histEvent struct {
+	path, oldSHA, newSHA, commit string
+	status                       byte
+	at                           time.Time
+	match                        scanner.Match
+}
+
 // phaseHistory walks the first-parent history once (newest first) to find
 // deleted artifacts, HID changes and creation/modification times.
 func (p *DB) phaseHistory(ctx context.Context, head string) error {
 	sc := p.Scanner()
-	// live artifacts and their current HIDs
-	live := map[string]string{} // guid -> current hid
-	rows, err := p.sql.QueryContext(ctx, `SELECT guid, COALESCE(hid,'') FROM artifacts`)
+	// Live artifacts: identity is the GUID inside the file, which may differ
+	// from the directory name after direct pushes. Paths are mapped to GUIDs
+	// from the projected rows; paths that are no longer live (moved or
+	// deleted files) are resolved by reading their blobs.
+	live := map[string]string{}     // guid -> current hid
+	pathGUID := map[string]string{} // repository path -> guid
+	curPath := map[string]string{}  // live guid -> the path it had at the point of history being walked
+	rows, err := p.sql.QueryContext(ctx, `SELECT guid, COALESCE(hid,''), file_path FROM artifacts`)
 	if err != nil {
 		return unavailable(err)
 	}
 	for rows.Next() {
-		var g, h string
-		if err := rows.Scan(&g, &h); err != nil {
+		var g, h, path string
+		if err := rows.Scan(&g, &h, &path); err != nil {
 			rows.Close()
 			return unavailable(err)
 		}
 		live[g] = h
+		pathGUID[path] = g
+		curPath[g] = path
 	}
 	rows.Close()
 
@@ -356,28 +372,34 @@ func (p *DB) phaseHistory(ctx context.Context, head string) error {
 		at                         time.Time
 	}
 	deleted := map[string]*delRow{}
-	// History events of live artifacts are buffered in walk order (newest
-	// first) and applied in that order, reading blobs in batches.
-	type event struct {
-		guid, oldSHA, newSHA, commit string
-		status                       byte
-		at                           time.Time
-	}
-	var events []event
+	var events []histEvent
 	commits := 0
 
+	// flush resolves the GUID of every buffered event and applies it in walk
+	// order (newest first).
 	flush := func() error {
 		if len(events) == 0 {
 			return nil
 		}
-		var shas []string
+		need := map[string]bool{}
 		for _, e := range events {
-			switch e.status {
-			case 'M':
-				shas = append(shas, e.oldSHA, e.newSHA)
-			case 'D':
-				shas = append(shas, e.oldSHA)
+			if _, known := pathGUID[e.path]; !known {
+				if e.status == 'D' {
+					need[e.oldSHA] = true
+				} else {
+					need[e.newSHA] = true
+				}
 			}
+			if e.status == 'M' {
+				need[e.oldSHA], need[e.newSHA] = true, true
+			}
+			if e.status == 'D' {
+				need[e.oldSHA] = true
+			}
+		}
+		shas := make([]string, 0, len(need))
+		for sha := range need {
+			shas = append(shas, sha)
 		}
 		blobs, err := p.repo.ReadBlobs(ctx, shas)
 		if err != nil {
@@ -390,28 +412,149 @@ func (p *DB) phaseHistory(ctx context.Context, head string) error {
 			}
 			return o.String("hid")
 		}
-		for _, e := range events {
+		guidOf := func(e histEvent) string {
+			if g, ok := pathGUID[e.path]; ok {
+				return g
+			}
+			sha := e.newSHA
+			if e.status == 'D' {
+				sha = e.oldSHA
+			}
+			rec := extract(e.match, sha, blobs[sha])
+			g := rec.GUID
+			if g == "" {
+				g = e.match.GUID
+				if e.match.Category == scanner.ConfigFile {
+					g = e.match.Name
+				}
+			}
+			if model.IsGUID(g) {
+				pathGUID[e.path] = g
+			}
+			return g
+		}
+		// Per commit: live GUIDs added at their current path and deleted at
+		// another path resolving to the same GUID = a move, not a creation.
+		addedAt := map[string]map[string]bool{}   // commit -> guid -> added at curPath
+		deletedIn := map[string]map[string]bool{} // commit -> guid -> some other path deleted
+		guids := make([]string, len(events))
+		for i, e := range events {
+			guids[i] = guidOf(e)
+			if !model.IsGUID(guids[i]) {
+				continue
+			}
+			if e.status == 'A' && curPath[guids[i]] == e.path {
+				if addedAt[e.commit] == nil {
+					addedAt[e.commit] = map[string]bool{}
+				}
+				addedAt[e.commit][guids[i]] = true
+			}
+			if e.status == 'D' && curPath[guids[i]] != e.path {
+				if deletedIn[e.commit] == nil {
+					deletedIn[e.commit] = map[string]bool{}
+				}
+				deletedIn[e.commit][guids[i]] = true
+			}
+		}
+		// Within a commit, additions are applied before deletions so that the
+		// addition half of a move is seen at the artifact's current path
+		// before the deletion half rewinds that path.
+		order := make([]int, len(events))
+		for i := range order {
+			order[i] = i
+		}
+		rank := func(st byte) int {
+			if st == 'D' {
+				return 1
+			}
+			return 0
+		}
+		sort.SliceStable(order, func(a, b int) bool {
+			ea, eb := events[order[a]], events[order[b]]
+			if ea.commit != eb.commit {
+				return false // keep commit order (stable)
+			}
+			return rank(ea.status) < rank(eb.status)
+		})
+		for _, i := range order {
+			e := events[i]
+			guid := guids[i]
+			if !model.IsGUID(guid) {
+				continue
+			}
+			if _, isLive := live[guid]; isLive {
+				if e.path != curPath[guid] {
+					if e.status == 'D' && addedAt[e.commit][guid] {
+						curPath[guid] = e.path // the artifact was moved here from e.path
+					}
+					// Otherwise a different file claims this GUID (an impostor,
+					// recorded in file_issues): it is not this artifact's history.
+					continue
+				}
+				if e.status == 'A' && deletedIn[e.commit][guid] {
+					// The addition half of a move: not a creation.
+					created[guid] = stamp{e.at, e.commit}
+					if _, seen := modified[guid]; !seen {
+						modified[guid] = stamp{e.at, e.commit}
+					}
+					continue
+				}
+				if _, seen := modified[guid]; !seen {
+					modified[guid] = stamp{e.at, e.commit}
+				}
+				created[guid] = stamp{e.at, e.commit}
+				switch e.status {
+				case 'M':
+					oldH, newH := hidOf(e.oldSHA), hidOf(e.newSHA)
+					if oldH == newH {
+						continue
+					}
+					if newH != "" {
+						hidRows = append(hidRows, hidRow{guid: guid, hid: newH, since: e.commit, at: e.at})
+					}
+					if oldH != "" {
+						hidRows = append(hidRows, hidRow{guid: guid, hid: oldH, since: "", at: e.at, until: e.commit})
+					}
+					pending[guid] = oldH
+				case 'A':
+					if h := pending[guid]; h != "" {
+						hidRows = append(hidRows, hidRow{guid: guid, hid: h, since: e.commit, at: e.at})
+					}
+				}
+				continue
+			}
+			// Not live: the newest deletion is recorded (§5.16) and the
+			// artifact's earlier HID history is tracked from there on.
 			switch e.status {
 			case 'D':
-				if h := hidOf(e.oldSHA); h != "" {
-					hidRows = append(hidRows, hidRow{guid: e.guid, hid: h, since: "", at: e.at, until: e.commit})
-					pending[e.guid] = h
+				if _, done := deleted[guid]; !done {
+					deleted[guid] = &delRow{guid: guid, path: e.path, commit: e.commit, oldSHA: e.oldSHA, at: e.at}
+					if h := hidOf(e.oldSHA); h != "" {
+						hidRows = append(hidRows, hidRow{guid: guid, hid: h, since: "", at: e.at, until: e.commit})
+						pending[guid] = h
+					}
 				}
 			case 'M':
+				if _, tracked := deleted[guid]; !tracked {
+					continue
+				}
 				oldH, newH := hidOf(e.oldSHA), hidOf(e.newSHA)
 				if oldH == newH {
 					continue
 				}
 				if newH != "" {
-					hidRows = append(hidRows, hidRow{guid: e.guid, hid: newH, since: e.commit, at: e.at})
+					hidRows = append(hidRows, hidRow{guid: guid, hid: newH, since: e.commit, at: e.at})
 				}
 				if oldH != "" {
-					hidRows = append(hidRows, hidRow{guid: e.guid, hid: oldH, since: "", at: e.at, until: e.commit})
+					hidRows = append(hidRows, hidRow{guid: guid, hid: oldH, since: "", at: e.at, until: e.commit})
 				}
-				pending[e.guid] = oldH
+				pending[guid] = oldH
 			case 'A':
-				if h := pending[e.guid]; h != "" {
-					hidRows = append(hidRows, hidRow{guid: e.guid, hid: h, since: e.commit, at: e.at})
+				if _, tracked := deleted[guid]; !tracked {
+					continue
+				}
+				if h := pending[guid]; h != "" {
+					hidRows = append(hidRows, hidRow{guid: guid, hid: h, since: e.commit, at: e.at})
 				}
 			}
 		}
@@ -430,40 +573,12 @@ func (p *DB) phaseHistory(ctx context.Context, head string) error {
 			if !ok {
 				continue
 			}
-			var guid string
-			switch {
-			case m.Category == scanner.Artifact:
-				guid = m.GUID
-			case m.Category == scanner.ConfigFile && (m.ConfigKind == scanner.ConfigLinks || m.ConfigKind == scanner.ConfigComments):
-				guid = m.Name
-			default:
+			isArtifact := m.Category == scanner.Artifact ||
+				(m.Category == scanner.ConfigFile && (m.ConfigKind == scanner.ConfigLinks || m.ConfigKind == scanner.ConfigComments))
+			if !isArtifact || (ch.Status != 'A' && ch.Status != 'M' && ch.Status != 'D') {
 				continue
 			}
-			if !model.IsGUID(guid) {
-				continue
-			}
-			if _, isLive := live[guid]; isLive {
-				if _, seen := modified[guid]; !seen {
-					modified[guid] = stamp{cd.Time, cd.SHA}
-				}
-				created[guid] = stamp{cd.Time, cd.SHA}
-				if ch.Status == 'M' || ch.Status == 'A' {
-					events = append(events, event{guid: guid, oldSHA: ch.OldSHA, newSHA: ch.SHA, commit: cd.SHA, status: ch.Status, at: cd.Time})
-				}
-				continue
-			}
-			// Not live: the newest deletion is recorded, and the artifact's
-			// earlier HID history is tracked from there on (§2.2.1, §5.16).
-			if ch.Status == 'D' {
-				if _, done := deleted[guid]; !done {
-					deleted[guid] = &delRow{guid: guid, path: ch.Path, commit: cd.SHA, oldSHA: ch.OldSHA, at: cd.Time}
-					events = append(events, event{guid: guid, oldSHA: ch.OldSHA, commit: cd.SHA, status: 'D', at: cd.Time})
-				}
-				continue
-			}
-			if _, tracked := deleted[guid]; tracked && (ch.Status == 'M' || ch.Status == 'A') {
-				events = append(events, event{guid: guid, oldSHA: ch.OldSHA, newSHA: ch.SHA, commit: cd.SHA, status: ch.Status, at: cd.Time})
-			}
+			events = append(events, histEvent{path: ch.Path, oldSHA: ch.OldSHA, newSHA: ch.SHA, commit: cd.SHA, status: ch.Status, at: cd.Time, match: m})
 		}
 		if len(events) >= batchSize {
 			return flush()

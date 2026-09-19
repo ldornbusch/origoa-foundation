@@ -65,3 +65,20 @@ export function blockId(): string {
 export function stop(e: Event) {
   e.stopPropagation();
 }
+
+/** Only render links whose scheme cannot execute code (mirrors model.SafeURL). */
+export function safeHref(v: unknown): string | null {
+  if (typeof v !== "string") return null;
+  const m = /^\s*([a-z][a-z0-9+.-]*):/i.exec(v);
+  if (!m) return null;
+  return ["http", "https", "ftp", "ftps", "mailto"].includes(m[1].toLowerCase()) ? v.trim() : null;
+}
+
+/** Image sources: same-origin paths, http(s) URLs or attachment names; never data:/javascript:. */
+export function safeImageSrc(src: string | undefined, fallback: (name: string) => string): string | null {
+  if (!src) return null;
+  if (/^\s*(javascript|data|vbscript):/i.test(src)) return null;
+  if (/^https?:\/\//i.test(src) || src.startsWith("/")) return src;
+  if (/^[a-z][a-z0-9+.-]*:/i.test(src)) return null;
+  return fallback(src);
+}

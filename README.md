@@ -168,8 +168,14 @@ export ORIGOA_TEST_DSN=postgres://postgres:postgres@127.0.0.1:5432/origoa_test?s
 make test        # go vet, gofmt gate, all packages with -race (PostgreSQL-backed tests skip without the DSN)
 make fuzz        # fuzz smoke: JSON codec fixed point, folder validation envelope, scanner classification
 make e2e         # REST end-to-end script against a temporary server
-make test-ui     # Playwright browser tests: + New flow, editing with 412 handling, workflows, links, comments, overlays, documents, search, deep links, delete
+make test-ui     # Playwright browser tests: + New flow, editing with 412 handling, workflows, links, comments, overlays, documents, search, deep links, delete,
+                 # plus adversarial cases (script-looking content, javascript:/data: URLs, over-long input, double submit, garbage deep links)
 ```
+
+Adversarial suites live next to the regular ones: `internal/foundation/adversarial_test.go` (hostile
+inputs, validation races between concurrent writers, hostile direct pushes, writes during reindex,
+branch rewinds), `internal/httpapi/adversarial_test.go` (limits, injection-shaped parameters, path
+tricks, WebSocket abuse) and `web/tests/adversarial.spec.ts`.
 
 Integration tests compare the live, incrementally maintained projection with a full rebuild after
 every scenario (including concurrent writers in two server processes), so "rebuildable from Git" is

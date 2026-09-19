@@ -316,6 +316,11 @@ var ddl = []string{
 		until_commit text,
 		PRIMARY KEY (guid, hid, since_commit))`,
 	`CREATE INDEX IF NOT EXISTS hid_history_hid ON hid_history (hid)`,
+	`CREATE TABLE IF NOT EXISTS file_issues (
+		path text PRIMARY KEY,
+		guid text NOT NULL,
+		message text NOT NULL)`,
+	`CREATE INDEX IF NOT EXISTS file_issues_guid ON file_issues (guid)`,
 	`CREATE TABLE IF NOT EXISTS deleted_artifacts (
 		guid text PRIMARY KEY,
 		kind text NOT NULL,

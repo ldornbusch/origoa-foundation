@@ -144,6 +144,29 @@ Real defects found while building, each fixed and covered by a test:
    `min-width: 0` let a wide table scroll the whole shell sideways. Both were caught from screenshots
    taken by the browser tests.
 
+The adversarial round (hostile inputs, validation races, hostile repository content, HTTP abuse,
+browser injection) added these:
+
+9. **A pushed file claiming an existing GUID displaced the real artifact.** The projection now keeps
+   the first owner of a GUID; the claimant is recorded in `file_issues`, reported by validation as
+   `duplicate-guid`, and promoted only if the owner disappears.
+10. **The history phase identified artifacts by directory name**, so files whose GUID differs from
+    their directory (hand-made or hostile) got no timestamps or HID history on rebuild, and an
+    impostor's commits were attributed to the real artifact. Identity is now resolved per path from
+    the projected rows or the blob, moves are recognized as deletion + addition of the same GUID in
+    one commit, and other paths claiming a live GUID are ignored.
+11. **Attachment names could contain path separators** (`../x` reached Git). Segment validation now
+    rejects `/` and `\`.
+12. **`javascript:` and `data:` URLs passed hyperlink validation**; only http(s), ftp(s) and mailto
+    are accepted, and the client never renders other schemes as links or image sources.
+13. **Titles and texts were unbounded and accepted NUL bytes**; they are capped and control
+    characters are rejected. NUL in query parameters produced a 503 from PostgreSQL instead of a
+    400; free-text query inputs are sanitized and GUID/HID path parameters are validated first.
+14. **The ordered JSON parser had no nesting limit** (Go's limit applies only to `Unmarshal`), so a
+    100 000-deep array in an ignored property was accepted; nesting is capped at 256.
+15. **A double click on Create submitted twice** because the busy flag was only reflected after the
+    next render; the handlers now check the flag synchronously.
+
 ## 5. Remaining gaps
 
 1. Pagination is offset-based (`limit`/`offset`); fine for MVP volumes.

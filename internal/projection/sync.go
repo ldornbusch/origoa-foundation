@@ -172,6 +172,10 @@ func (p *DB) ProjectCommit(ctx context.Context, tx *sql.Tx, commit string, chang
 
 	// Additions / modifications first so that a move (D+A of the same GUID
 	// in one commit) is seen as a relocation, not a deletion.
+	removed := map[string]bool{}
+	for _, u := range dels {
+		removed[u.ch.Path] = true
+	}
 	touched := map[string]bool{}
 	for _, u := range adds {
 		content, ok := blobs[u.ch.SHA]
@@ -182,8 +186,11 @@ func (p *DB) ProjectCommit(ctx context.Context, tx *sql.Tx, commit string, chang
 		if rec.GUID == "" {
 			continue
 		}
+		if _, err := tx.ExecContext(ctx, `DELETE FROM file_issues WHERE path = $1`, rec.Path); err != nil {
+			return unavailable(err)
+		}
 		touched[rec.GUID] = true
-		if err := p.upsertRecord(ctx, tx, rec, commit, when); err != nil {
+		if err := p.upsertRecord(ctx, tx, rec, commit, when, removed); err != nil {
 			return err
 		}
 	}
@@ -198,6 +205,13 @@ func (p *DB) ProjectCommit(ctx context.Context, tx *sql.Tx, commit string, chang
 		// The file may belong to a GUID whose row is keyed by the guid in the
 		// file; look the row up by path as well.
 		if err := p.deleteByPath(ctx, tx, u.ch.Path, guid, commit, when); err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `DELETE FROM file_issues WHERE path = $1`, u.ch.Path); err != nil {
+			return unavailable(err)
+		}
+		// A file that previously lost a GUID conflict may now be its rightful owner.
+		if err := p.promoteClaimants(ctx, tx, guid, commit, when, removed); err != nil {
 			return err
 		}
 	}
@@ -243,12 +257,33 @@ func (p *DB) upsertConfig(ctx context.Context, tx *sql.Tx, c *ConfigRecord) erro
 }
 
 // upsertRecord writes an artifact row and its derived index rows, and
-// maintains HID history.
-func (p *DB) upsertRecord(ctx context.Context, tx *sql.Tx, r *record, commit string, when time.Time) error {
+// maintains HID history. A file that claims a GUID already owned by a
+// different, still existing file is recorded in file_issues instead of
+// displacing the owner (GUIDs are permanent identities, §2.2.1).
+func (p *DB) upsertRecord(ctx context.Context, tx *sql.Tx, r *record, commit string, when time.Time, removed map[string]bool) error {
 	var oldHID sql.NullString
+	var oldPath string
 	var exists bool
-	err := tx.QueryRowContext(ctx, `SELECT true, hid FROM artifacts WHERE guid = $1`, r.GUID).Scan(&exists, &oldHID)
+	err := tx.QueryRowContext(ctx, `SELECT true, hid, file_path FROM artifacts WHERE guid = $1`, r.GUID).Scan(&exists, &oldHID, &oldPath)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return unavailable(err)
+	}
+	if exists && oldPath != r.Path && !removed[oldPath] {
+		var owner string
+		if err := tx.QueryRowContext(ctx, `SELECT error FROM artifacts WHERE guid = $1`, r.GUID).Scan(&owner); err != nil {
+			return unavailable(err)
+		}
+		if owner != "not yet indexed" {
+			_, err := tx.ExecContext(ctx, `INSERT INTO file_issues (path, guid, message) VALUES ($1,$2,$3)
+				ON CONFLICT (path) DO UPDATE SET guid = EXCLUDED.guid, message = EXCLUDED.message`,
+				r.Path, r.GUID, "claims GUID "+r.GUID+" which belongs to "+oldPath)
+			return unavailable(err)
+		}
+		// The owner row is a not-yet-indexed identity row of a rebuild whose
+		// file will be processed later; that file wins, this one is an issue.
+		_, err := tx.ExecContext(ctx, `INSERT INTO file_issues (path, guid, message) VALUES ($1,$2,$3)
+			ON CONFLICT (path) DO UPDATE SET guid = EXCLUDED.guid, message = EXCLUDED.message`,
+			r.Path, r.GUID, "claims GUID "+r.GUID+" which belongs to "+oldPath)
 		return unavailable(err)
 	}
 	var hid any
@@ -360,6 +395,69 @@ func (p *DB) deleteByPath(ctx context.Context, tx *sql.Tx, path, guid, commit st
 		}
 	}
 	return nil
+}
+
+// promoteClaimants re-projects files that were waiting for a GUID whose
+// owner has just been removed.
+func (p *DB) promoteClaimants(ctx context.Context, tx *sql.Tx, guid, commit string, when time.Time, removed map[string]bool) error {
+	rows, err := tx.QueryContext(ctx, `SELECT path FROM file_issues WHERE guid = $1 ORDER BY path`, guid)
+	if err != nil {
+		return unavailable(err)
+	}
+	var paths []string
+	for rows.Next() {
+		var path string
+		if err := rows.Scan(&path); err != nil {
+			rows.Close()
+			return unavailable(err)
+		}
+		paths = append(paths, path)
+	}
+	rows.Close()
+	sc := p.Scanner()
+	for _, path := range paths {
+		if removed[path] {
+			continue
+		}
+		content, sha, err := p.repo.ReadPath(ctx, commit, path)
+		if err != nil {
+			continue
+		}
+		m, ok := sc.Match(path)
+		if !ok {
+			continue
+		}
+		rec := extract(m, sha, content)
+		if rec.GUID == "" {
+			continue
+		}
+		if _, err := tx.ExecContext(ctx, `DELETE FROM file_issues WHERE path = $1`, path); err != nil {
+			return unavailable(err)
+		}
+		if err := p.upsertRecord(ctx, tx, rec, commit, when, removed); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// FileIssues lists files the projection could not accept (e.g. GUID conflicts).
+func (p *DB) FileIssues(ctx context.Context) ([]Issue, error) {
+	rows, err := p.sql.QueryContext(ctx, `SELECT path, guid, message FROM file_issues ORDER BY path`)
+	if err != nil {
+		return nil, unavailable(err)
+	}
+	defer rows.Close()
+	var out []Issue
+	for rows.Next() {
+		var i Issue
+		if err := rows.Scan(&i.Path, &i.GUID, &i.Message); err != nil {
+			return nil, unavailable(err)
+		}
+		i.Severity, i.Code = "error", "duplicate-guid"
+		out = append(out, i)
+	}
+	return out, unavailable(rows.Err())
 }
 
 // ---- configuration cache --------------------------------------------------

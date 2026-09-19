@@ -69,6 +69,9 @@ func scanSummary(rows interface{ Scan(...any) error }) (*model.Summary, error) {
 
 // Locate translates a GUID to its repository location (design guide §5.7).
 func (p *DB) Locate(ctx context.Context, guid string) (*Located, error) {
+	if !model.IsGUID(guid) {
+		return nil, model.ErrNotFound
+	}
 	var l Located
 	var kind string
 	err := p.sql.QueryRowContext(ctx, `SELECT guid, kind, type, folder, file_path, blob_sha, valid FROM artifacts WHERE guid = $1`, guid).
@@ -85,6 +88,9 @@ func (p *DB) Locate(ctx context.Context, guid string) (*Located, error) {
 
 // Get returns the projected summary of one artifact.
 func (p *DB) Get(ctx context.Context, guid string) (*model.Summary, error) {
+	if !model.IsGUID(guid) {
+		return nil, model.ErrNotFound
+	}
 	row := p.sql.QueryRowContext(ctx, `SELECT `+summaryCols+` FROM artifacts a WHERE a.guid = $1`, guid)
 	s, err := scanSummary(row)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -103,6 +109,13 @@ func (p *DB) Search(ctx context.Context, q Query) ([]*model.Summary, int, error)
 	}
 	if !p.Status().Capabilities.Query {
 		return nil, 0, fmt.Errorf("%w: projection is being rebuilt", model.ErrUnavailable)
+	}
+	q.Text, q.Type, q.HID, q.Sort = clean(q.Text), clean(q.Type), clean(q.HID), clean(q.Sort)
+	for k, v := range q.Fields {
+		q.Fields[k] = clean(v)
+	}
+	for k, v := range q.States {
+		q.States[k] = clean(v)
 	}
 	var where []string
 	var args []any
@@ -131,10 +144,10 @@ func (p *DB) Search(ctx context.Context, q Query) ([]*model.Summary, int, error)
 		}
 	}
 	for f, v := range q.Fields {
-		where = append(where, "EXISTS (SELECT 1 FROM artifact_fields f WHERE f.guid = a.guid AND f.field = "+arg(f)+" AND f.value = "+arg(v)+")")
+		where = append(where, "EXISTS (SELECT 1 FROM artifact_fields f WHERE f.guid = a.guid AND f.field = "+arg(clean(f))+" AND f.value = "+arg(v)+")")
 	}
 	for w, st := range q.States {
-		where = append(where, "a.states->>"+arg(w)+" = "+arg(st))
+		where = append(where, "a.states->>"+arg(clean(w))+" = "+arg(st))
 	}
 	if q.Valid != nil {
 		where = append(where, "a.valid = "+arg(*q.Valid))
@@ -280,6 +293,7 @@ func (p *DB) NearestScope(ctx context.Context, folder string) (string, error) {
 
 // HIDOwner returns the GUID currently carrying a HID ("" if free).
 func (p *DB) HIDOwner(ctx context.Context, hid string) (string, error) {
+	hid = clean(hid)
 	var guid string
 	err := p.sql.QueryRowContext(ctx, `SELECT guid FROM artifacts WHERE hid = $1 LIMIT 1`, hid).Scan(&guid)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -548,6 +562,7 @@ type HIDRecord struct {
 // HIDHistory lists every artifact that ever carried a HID, and the
 // history of HIDs of a GUID when guid is given (design guide §2.2.1).
 func (p *DB) HIDHistory(ctx context.Context, hid, guid string) ([]HIDRecord, error) {
+	hid, guid = clean(hid), clean(guid)
 	rows, err := p.sql.QueryContext(ctx, `SELECT h.guid, h.hid, h.since_commit, h.since_at, COALESCE(h.until_commit,''),
 		EXISTS (SELECT 1 FROM artifacts a WHERE a.guid = h.guid AND a.hid = h.hid)
 		FROM hid_history h WHERE ($1 = '' OR h.hid = $1) AND ($2 = '' OR h.guid = $2) ORDER BY h.since_at DESC NULLS LAST`, hid, guid)

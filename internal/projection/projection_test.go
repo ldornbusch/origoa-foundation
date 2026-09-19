@@ -316,5 +316,6 @@ func snapshot(t *testing.T, p *DB) string {
 	dump(`SELECT concat_ws('|', path, scope, category, name, blob_sha, valid, error, data::text) FROM config_files ORDER BY 1`)
 	dump(`SELECT concat_ws('|', guid, hid, since_commit, until_commit) FROM hid_history ORDER BY 1`)
 	dump(`SELECT concat_ws('|', guid, kind, type, title, hid, last_path, deleted_commit) FROM deleted_artifacts ORDER BY 1`)
+	dump(`SELECT concat_ws('|', path, guid, message) FROM file_issues ORDER BY 1`)
 	return b.String()
 }

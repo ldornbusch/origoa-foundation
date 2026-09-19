@@ -48,7 +48,7 @@ func seed(t *testing.T, f *Foundation) {
 		"transitions":[{"id":"submit","from":"open","to":"review"},{"from":"review","to":"done"},{"from":"review","to":"open"}]}`)))
 	must(f.PutSchema(ctx, "", "requirement", []byte(`{"type":"requirement","displayName":"Requirement","hid":{"prefix":"REQ"},"workflows":["dev"],
 		"fields":[{"id":"priority","name":"Priority","type":"enum","required":true,"options":[{"value":"low"},{"value":"medium"},{"value":"high"}]},
-		          {"id":"rationale","type":"multiline"},{"id":"effort","type":"integer"},{"id":"owner","type":"reference"}]}`)))
+		          {"id":"rationale","type":"multiline"},{"id":"effort","type":"integer"},{"id":"owner","type":"reference"},{"id":"spec","type":"hyperlink"}]}`)))
 	must(f.PutSchema(ctx, "", "testcase", []byte(`{"type":"testcase","hid":{"prefix":"TC","digits":3}}`)))
 	must(f.PutSchema(ctx, "", "spec", []byte(`{"type":"spec","kind":"document","hid":{"prefix":"SPEC"}}`)))
 	must(f.PutSchema(ctx, "", "verifies", []byte(`{"type":"verifies","kind":"link","sourceTypes":["testcase"],"targetTypes":["requirement"],"cardinality":"many-to-one",
@@ -483,6 +483,7 @@ func dump(t *testing.T, p *projection.DB) string {
 		`SELECT concat_ws('|', path, scope, category, name, blob_sha, valid) FROM config_files ORDER BY 1`,
 		`SELECT concat_ws('|', guid, hid, since_commit, until_commit) FROM hid_history ORDER BY 1`,
 		`SELECT concat_ws('|', guid, kind, title, hid, last_path, deleted_commit) FROM deleted_artifacts ORDER BY 1`,
+		`SELECT concat_ws('|', path, guid, message) FROM file_issues ORDER BY 1`,
 	} {
 		rows, err := p.SQL().Query(q)
 		if err != nil {
