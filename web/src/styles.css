@@ -284,3 +284,15 @@ kbd { font: 11px var(--mono); border: 1px solid var(--border); border-bottom-wid
   groundsill-document { grid-template-columns: 1fr; }
   .doc-side { width: 100%; }
 }
+
+/* folder field */
+.folder-field { display: flex; flex-direction: column; gap: 6px; }
+.folder-input { display: flex; gap: 6px; align-items: center; }
+.folder-input input { flex: 1; min-width: 0; }
+.folder-status { font-size: 12.5px; line-height: 1.7; }
+.folder-status .folder-path { font-family: ui-monospace, monospace; margin: 0 4px; }
+.folder-status .folder-path .new { color: var(--warn); font-weight: 600; }
+.pill.new { background: var(--warn-soft); border-color: transparent; color: var(--warn); }
+.folder-typo { margin-top: 4px; padding: 6px 10px; border-radius: 8px; background: var(--warn-soft); color: var(--warn); }
+.folder-browser { border: 1px solid var(--border); border-radius: 8px; padding: 6px; max-height: 220px; overflow: auto; }
+.tree .row.pending .name { font-style: italic; color: var(--muted); }

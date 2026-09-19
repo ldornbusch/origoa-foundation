@@ -9,7 +9,7 @@ import { displayName, kindPlural } from "./util";
 // Repository navigation (design guide §7.3): search, subtree toggle, the
 // physical folder hierarchy, and artifacts grouped by schema type.
 
-interface Node { info: FolderInfo; children: Node[] | null; open: boolean }
+interface Node { info: FolderInfo; children: Node[] | null; open: boolean; pending?: boolean }
 
 @customElement("groundsill-sidebar")
 export class Sidebar extends LitElement {
@@ -78,8 +78,8 @@ export class Sidebar extends LitElement {
       const path = parts.slice(0, i + 1).join("/");
       let next = cur.children?.find((c) => c.info.path === path);
       if (!next) {
-        // folder not known yet (freshly created): add a placeholder node
-        next = { info: { name: parts[i], path, artifacts: 0, hasConfig: false }, children: null, open: false };
+        // folder not known yet (freshly created, or planned with "New folder"): add a placeholder node
+        next = { info: { name: parts[i], path, artifacts: 0, hasConfig: false }, children: null, open: false, pending: true };
         cur.children = [...(cur.children ?? []), next];
       }
       next.open = true;
@@ -108,6 +108,20 @@ export class Sidebar extends LitElement {
     return c;
   }
 
+  // Folders exist only through their content (Git tracks no empty
+  // directories), so a new folder is a destination: it is shown as a
+  // placeholder and becomes real with the first artifact saved there.
+  private newFolder = async () => {
+    const parent = this.s.route.folder;
+    const name = await store.prompt("New folder", {
+      text: `Subfolder of ${parent || "the repository root"}. It is created with the first artifact you save in it.`,
+      placeholder: "name or sub/path", confirmLabel: "Open",
+    });
+    const rel = (name ?? "").trim().replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
+    if (!rel) return;
+    navigate({ folder: parent ? `${parent}/${rel}` : rel, guid: null, type: "", q: "" });
+  };
+
   private toggle(n: Node) {
     n.open = !n.open;
     if (n.open && !n.children) this.load(n);
@@ -119,7 +133,7 @@ export class Sidebar extends LitElement {
     const selected = r.folder === n.info.path && !r.type;
     const hasKids = n.children === null || n.children.length > 0;
     return html`<li>
-      <div class="row ${selected ? "selected" : ""}" data-folder=${n.info.path} @click=${() => { navigate({ folder: n.info.path, guid: null, type: "", q: "" }); store.closeNavIfOverlay(); }}>
+      <div class="row ${selected ? "selected" : ""} ${n.pending ? "pending" : ""}" title=${n.pending ? "Not in the repository yet: created with the first artifact saved here" : ""} data-folder=${n.info.path} @click=${() => { navigate({ folder: n.info.path, guid: null, type: "", q: "" }); store.closeNavIfOverlay(); }}>
         <span class="caret ${hasKids ? "" : "empty"}" @click=${(e: Event) => { e.stopPropagation(); this.toggle(n); }}>${n.open ? "▾" : "▸"}</span>
         <span class="name">${depth === 0 ? html`<b>${n.info.name}</b>` : n.info.name}</span>
         ${n.info.hasConfig ? html`<span class="badge" title="has a .groundsill metadata directory">.groundsill</span>` : nothing}
@@ -143,7 +157,8 @@ export class Sidebar extends LitElement {
           <input type="checkbox" .checked=${r.subtree} data-test="subtree" @change=${(e: Event) => navigate({ subtree: (e.target as HTMLInputElement).checked })} /></label>
       </div>
       <div class="nav-scroll">
-        <div class="nav-section"><div class="nav-title"><span>Folders</span></div>
+        <div class="nav-section"><div class="nav-title"><span>Folders</span>
+          <button class="btn sm" data-test="new-folder" title="New subfolder of the current folder" @click=${this.newFolder}>＋</button></div>
           <ul class="tree">${this.node(this.root, 0)}</ul></div>
         <div class="nav-section"><div class="nav-title"><span>By type${r.folder ? html` <span class="muted">in ${r.folder}</span>` : nothing}</span></div>
           ${!this.types.length ? html`<div class="muted small" style="padding:4px 8px">No schemas visible here yet.</div>` : nothing}
