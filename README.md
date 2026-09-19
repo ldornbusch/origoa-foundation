@@ -196,6 +196,7 @@ verified on every run rather than assumed.
 | [docs/INSTALL.md](docs/INSTALL.md) | Install, run, define a domain, deploy |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Source tour and how a request flows |
 | [DESIGN_NOTES.md](DESIGN_NOTES.md) | Design guide vs. implementation: adopted, adapted, deferred, and what testing found |
+| [docs/ROADMAP.md](docs/ROADMAP.md) | What is still missing, ranked by how much it blocks a deployment |
 
 ## License
 
