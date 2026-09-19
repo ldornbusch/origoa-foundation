@@ -1,0 +1,156 @@
+# Design notes — the design guide vs. this implementation
+
+How this code base relates to the *Origoa Foundation* design guide: what was adopted as
+written, what was adapted and why, what was deliberately not built, what testing changed, and
+what remains. Section numbers (§) refer to the guide.
+
+## 1. Adopted as specified
+
+**Git as the single source of truth, everything else a projection (§1.3, §3.8, §5.2).** A bare
+repository holds artifacts, links, comments, schemas, workflows and the scanner configuration.
+The projection is rebuilt from Git by `Reindex` and, in tests, after every scenario the live
+projection is compared table by table with a fresh rebuild.
+
+**Plumbing only, one commit per logical operation, CAS publication (§5.3, §5.4).** `hash-object`,
+`update-index --index-info`, `write-tree`, `commit-tree` on a private index, then
+`update-ref <ref> <new> <old>`. No working directory exists anywhere.
+
+**The repository update transaction (§10.1), literally.** `Foundation.write` runs: sync the
+projection to HEAD → build the changeset and the (unpublished) commit → begin the PostgreSQL
+transaction → project the commit excluding `processed_hash` → acquire the short-lived mutex →
+publish with CAS → advance `processed_hash` → release → commit. A stale CAS rolls back and
+rebuilds the changeset on the new head; every validation is redone. If the database commit fails
+after publication, Git is ahead and the next synchronization replays the commit.
+
+**Sequential replay, then full rebuild (§5.13, §5.14).** `Sync` reads `processed_hash`, walks the
+first-parent chain to HEAD and replays each commit in its own transaction with a CAS on
+`processed_hash`. Only when the stored revision is missing, not on the chain, or the branch was
+rewound does a rebuild run.
+
+**The phased reindex (§3.15, §5.15, §10.3).** Maintenance mode → phase 1 identity rows (GUID →
+path; lookup available) → phase 2 field indexing (metadata and key/value index; queries available)
+→ phase 3 drop the GIN index, parallel workers stream searchable text from Git, recreate the index
+(search available) → phase 4 a single first-parent history walk records deleted artifacts (§5.16),
+HID history (§2.2.1) and creation/modification times. Progress and capabilities are exposed in the
+status and pushed over the session channel.
+
+**Hierarchy with PostgreSQL's hierarchical path type (§3.11, §5.8).** Folder paths are stored as
+`ltree` (each name encoded exactly into a label) with a GiST index; subtree queries use `<@`.
+
+**Structured commit messages (§3.9, §5.5)** with human subjects plus `Origoa-Op`, `Origoa-Guid`
+and related trailers; never interpreted, only displayed.
+
+**Metadata locality (§3.4).** Links and comments are stored in the nearest `.origoa` above their
+source/subject; moving an artifact or a folder relocates them, and a maintenance operation restores
+locality after manual Git changes. The validation service reports misplaced metadata.
+
+**Identity (§2.2.1–§2.2.2).** Permanent GUIDs; all references GUID-based; HIDs generated from a
+schema prefix (optionally zero-padded), editable, unique across the repository, with a queryable
+history that never re-issues a number.
+
+**Schema composition (§4.3–§4.4)** root → artifact, nearest definition wins per property, fields
+and link rules replaced completely by nearer definitions, `inheritance: off` severs. Artifact types
+exist for all four kinds (§4.5): link types carry endpoint constraints and cardinality (§4.8),
+comment types can add fields.
+
+**Field types (§4.6).** hid, boolean, integer, float, currency, date, time, datetime, text,
+multiline, richtext, enum (single/multiple, user-extendable), hyperlink, reference(s), attachment,
+json, workflow.
+
+**Stable JSON serialization (§3.16).** Unchanged objects are written verbatim from their source
+text; edits keep positions; new properties append; indentation, line endings and trailing-newline
+style are detected and kept; unknown properties pass through untouched.
+
+**Configurable scanner (§10.4)** with `guid_files`, `config_folders` and an indexer registry.
+
+**The frontend (§7).** Lit + TypeScript Web Components, central store, URL router with deep links
+for folder, artifact, query, filters, detail section, sidebars and layout, REST client, WebSocket
+session client with presence and conflict warnings (§7.16.3), schema-driven views (§7.10), the
+three-area layout (§7.2), the entry detail sections (§7.5), the document view with sidebars (§7.6).
+
+## 2. Adapted — same intent, different mechanics
+
+**Validation boundary (§4.11).** The guide assigns business validation to applications. The
+Foundation enforces exactly the invariants whose violation would corrupt the repository contract:
+HID uniqueness, overlay acyclicity, reference integrity (bases, link endpoints, comment subjects and
+parents, reference fields, entry blocks), link endpoint types and cardinality when a link schema is
+visible, workflow legality, field *type* validity and `required` fields. Unknown fields are allowed
+so applications and tools can extend files.
+
+**The publish mutex is per process; correctness across processes rests on the two CAS operations
+(§5.12).** The Git `update-ref` and the `processed_hash` update are both compare-and-swap, so a
+second server sharing the repository and database cannot skip or double-apply a commit. Maintenance
+mode is additionally advertised through the database so other processes refuse writes during a
+rebuild.
+
+**Large structural operations (§10.2).** Folder moves count affected files and enter maintenance
+mode above a threshold; the whole move is still one commit and one projection transaction.
+Estimated durations are not computed — at this scale a count is the useful signal.
+
+**Full-text and field indexing scope.** Every artifact's fields are indexed as key/value pairs and
+all string content is searchable, rather than only fields marked by the effective schema. It is a
+superset that avoids re-projecting artifacts when a schema changes; a `searchable: false` flag is
+accepted in schemas for applications that want to narrow presentation.
+
+**Reads that hit a stale projection.** Instead of a continuous synchronization service, a
+background watcher checks the head every few seconds, and every read that notices a lag
+resynchronizes first. Direct pushes therefore appear within seconds.
+
+**Document editor.** The guide names BlockSuite. The client ships a small block editor of its own
+(sections, paragraphs, entry reference cards, lists, code, images) with the same content model, so
+the MVP's "compose documents from reusable entries" criterion is met without a large dependency.
+Swapping in BlockSuite is a component-level change: the content tree is the contract.
+
+## 3. Deliberately not built
+
+Listed by the guide as outside or beyond the MVP (§9.8, §9.10):
+
+- Authentication, permissions, TLS — the server must sit behind a trusted proxy.
+- Extension hooks and UI extensions (§8) — the indexer registry and the pass-through of unknown
+  properties are the only extension seams.
+- Anchored comments inside document text ranges — comments carry an optional `anchor` object, but
+  the editor does not maintain anchors while editing.
+- Branching/merging, distributed repositories, historical-revision reads.
+- Enumerations generated by extensions or from repository artifacts (§4.6) — user-defined and
+  user-extendable enumerations are implemented.
+
+## 4. What testing changed
+
+Real defects found while building, each fixed and covered by a test:
+
+1. **Reading HEAD before `processed_hash` escalated a benign race into a full rebuild.** A second
+   process could publish and advance the projection between the two reads, making the projection
+   look "ahead" of the head. Reading `processed_hash` first, and treating "projection ahead of a
+   re-read head" as a rewind only when it persists, fixed it.
+2. **HID history was reconstructed out of order.** Buffering modification pairs until the end of the
+   history walk put an artifact's creation event before its rename events. Events are now applied in
+   walk order in batches, and deleted artifacts' HID history is reconstructed too, so the rebuild
+   equals the incrementally maintained tables.
+3. **A `\u0000` escape in a field wedged the projection.** PostgreSQL rejects it in `jsonb`; the
+   sanitizer only looked for raw NUL bytes. All projected text and JSON is now cleaned, and a test
+   commits NULs, invalid JSON and mismatched schema files to prove the projection stays rebuildable.
+4. **A transient HID conflict inside validation was reported as final.** Two processes generating
+   the same next number: the loser now retries on the new head instead of failing the request.
+5. **The client dropped `subtree=false`.** Booleans that were false were omitted from query strings,
+   so the server default (`true`) applied and folder views showed nested content.
+6. **A soft refresh while editing replaced the ETag.** After another user's change, the view was
+   swapped in even with a dirty draft, so the next save succeeded and silently overwrote the other
+   change. The draft and its original ETag are now kept; saving is rejected with 412 and the user is
+   offered a reload.
+7. **Two overlapping loads mixed artifacts.** Navigating from one artifact to another while a
+   refresh for the first was in flight showed the second's title with the first's schema and draft.
+   Loads carry a sequence token; stale results are discarded.
+8. **A CSS class collision made navigation rows 80 px tall**, and grid items without
+   `min-width: 0` let a wide table scroll the whole shell sideways. Both were caught from screenshots
+   taken by the browser tests.
+
+## 5. Remaining gaps
+
+1. Pagination is offset-based (`limit`/`offset`); fine for MVP volumes.
+2. Presence and the WebSocket session hub are per process; with several servers, clients see only
+   the users connected to their own server.
+3. `ltree` labels longer than 200 characters are hashed; hierarchy queries stay exact, but such a
+   label is not human-readable in the database.
+4. The `searchable` flag and presentation metadata beyond `columns`, `icon` and `color` are stored
+   and returned but not interpreted by the generic client.
+5. Rich text is stored as plain text; no inline formatting yet.
