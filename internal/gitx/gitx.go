@@ -38,6 +38,27 @@ var (
 	ErrNotFound = errors.New("gitx: not found")
 )
 
+type authorKey struct{}
+
+// WithAuthor returns a context whose commits are authored by name (the
+// committer stays the repository identity). Characters Git cannot store in an
+// identity are dropped; an empty name leaves the default author in place.
+func WithAuthor(ctx context.Context, name string) context.Context {
+	name = strings.TrimSpace(strings.Map(func(r rune) rune {
+		if r == '<' || r == '>' || r < 0x20 || r == 0x7f {
+			return -1
+		}
+		return r
+	}, name))
+	if len(name) > 200 {
+		name = strings.ToValidUTF8(name[:200], "")
+	}
+	if name == "" {
+		return ctx
+	}
+	return context.WithValue(ctx, authorKey{}, name)
+}
+
 // Repo is a handle to a bare repository and the branch the Foundation owns.
 type Repo struct {
 	Dir    string
@@ -336,8 +357,12 @@ func (r *Repo) BuildCommit(ctx context.Context, parent, message string, ops []Op
 	}
 	c := r.cmd(ctx, args...)
 	now := time.Now().Format(time.RFC3339)
+	author := r.Author
+	if name, ok := ctx.Value(authorKey{}).(string); ok {
+		author = name
+	}
 	c.Env = append(c.Env,
-		"GIT_AUTHOR_NAME="+r.Author, "GIT_AUTHOR_EMAIL="+r.Email, "GIT_AUTHOR_DATE="+now,
+		"GIT_AUTHOR_NAME="+author, "GIT_AUTHOR_EMAIL="+r.Email, "GIT_AUTHOR_DATE="+now,
 		"GIT_COMMITTER_NAME="+r.Author, "GIT_COMMITTER_EMAIL="+r.Email, "GIT_COMMITTER_DATE="+now)
 	c.Stdin = strings.NewReader(message)
 	var out, errb bytes.Buffer

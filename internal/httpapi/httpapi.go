@@ -13,11 +13,13 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/thomdehoog/groundsill/internal/foundation"
+	"github.com/thomdehoog/groundsill/internal/gitx"
 	"github.com/thomdehoog/groundsill/internal/model"
 	"github.com/thomdehoog/groundsill/internal/ojson"
 	"github.com/thomdehoog/groundsill/internal/projection"
@@ -44,7 +46,13 @@ func New(f *foundation.Foundation) *Server {
 	return s
 }
 
-func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) { s.mux.ServeHTTP(w, r) }
+func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	// The client names its user (percent-encoded) so commits carry them as author.
+	if user, err := url.PathUnescape(r.Header.Get("X-Groundsill-User")); err == nil && user != "" {
+		r = r.WithContext(gitx.WithAuthor(r.Context(), user))
+	}
+	s.mux.ServeHTTP(w, r)
+}
 
 func (s *Server) routes() {
 	m := s.mux

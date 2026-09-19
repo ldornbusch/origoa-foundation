@@ -8,8 +8,19 @@ export class ApiError extends Error {
   }
 }
 
+/** Names the configured user so the server records them as commit author. */
+function userHeader(): Record<string, string> {
+  let user = "";
+  try {
+    user = localStorage.getItem("groundsill.user") || "";
+  } catch {
+    /* storage unavailable */
+  }
+  return user ? { "X-Groundsill-User": encodeURIComponent(user) } : {};
+}
+
 async function request<T>(method: string, path: string, body?: unknown, headers: Record<string, string> = {}): Promise<T> {
-  const init: RequestInit = { method, headers: { ...headers } };
+  const init: RequestInit = { method, headers: { ...userHeader(), ...headers } };
   if (body !== undefined) {
     if (typeof body === "string") {
       init.body = body;
@@ -79,7 +90,7 @@ export const api = {
   comments: (guid: string) => request<{ comments: CommentView[] }>("GET", `/artifacts/${guid}/comments`),
   history: (guid: string) => request<{ history: LogEntry[] }>("GET", `/artifacts/${guid}/history`),
   uploadFile: async (guid: string, name: string, file: File) => {
-    const res = await fetch(`/api/artifacts/${guid}/files/${encodeURIComponent(name)}`, { method: "PUT", body: file });
+    const res = await fetch(`/api/artifacts/${guid}/files/${encodeURIComponent(name)}`, { method: "PUT", body: file, headers: userHeader() });
     if (!res.ok) throw new ApiError(res.status, (await res.json().catch(() => ({})))?.error ?? res.statusText);
   },
   deleteFile: (guid: string, name: string) => request<void>("DELETE", `/artifacts/${guid}/files/${encodeURIComponent(name)}`),
