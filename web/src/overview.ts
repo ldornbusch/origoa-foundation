@@ -140,7 +140,7 @@ export class Overview extends LitElement {
 
   private moveFolder = () => {
     const from = this.s.route.folder;
-    store.prompt(`Move folder ${from}`, { text: "New location of the folder and everything below it.", value: from, confirmLabel: "Move" }).then((to) => {
+    store.prompt(`Move folder ${from}`, { text: "New location of the folder and everything below it.", value: from, confirmLabel: "Move", folder: true, ignore: from }).then((to) => {
       if (to === null || to.trim() === from) return;
       api.moveFolder(from, to.trim()).then((res) => {
         store.toast(`Moved ${res.moved} file${res.moved === 1 ? "" : "s"} to ${to.trim() || "/"}`, "success");

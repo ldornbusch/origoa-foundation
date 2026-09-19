@@ -231,7 +231,7 @@ export class Detail extends LitElement {
   }
 
   private move() {
-    store.prompt("Move artifact", { text: "Target folder; leave empty for the repository root.", value: this.view?.meta.folder ?? "", confirmLabel: "Move" }).then((folder) => {
+    store.prompt("Move artifact", { text: "Target folder; leave empty for the repository root.", value: this.view?.meta.folder ?? "", confirmLabel: "Move", folder: true }).then((folder) => {
       if (folder === null) return;
       api.move(this.guid, folder).then((v) => { this.view = v; store.toast(`Moved to ${folder || "/"}`, "success"); store.refresh(); navigate({ folder }); this.reload(true); })
         .catch((e) => store.toast(e instanceof ApiError ? e.message : String(e), "error"));

@@ -7,9 +7,11 @@ import type { FolderInfo, Schema } from "./types";
 import { displayName, kindPlural } from "./util";
 
 // Repository navigation (design guide §7.3): search, subtree toggle, the
-// physical folder hierarchy, and artifacts grouped by schema type.
+// folder hierarchy below the current folder, and artifacts grouped by schema type.
 
-interface Node { info: FolderInfo; children: Node[] | null; open: boolean }
+const FILTER_FROM = 15; // children of the current folder before a filter box appears
+
+interface Node { info: FolderInfo; children: Node[] | null; open: boolean; pending?: boolean }
 
 @customElement("groundsill-sidebar")
 export class Sidebar extends LitElement {
@@ -23,7 +25,8 @@ export class Sidebar extends LitElement {
   private lastFolder: string | null = null;
   private lastRouteQ: string | null = null;
   private timer = 0;
-  private rootLoading: Promise<void> = Promise.resolve();
+  @state() private filter = "";
+  private rootSeq = 0;
 
   override createRenderRoot() { return this; }
   override connectedCallback() {
@@ -37,7 +40,7 @@ export class Sidebar extends LitElement {
       }
       if (s.route.folder !== this.lastFolder) {
         this.lastFolder = s.route.folder;
-        this.expandTo(s.route.folder);
+        this.rootAt(s.route.folder);
         this.loadTypes(s.route.folder);
       }
       if (s.route.q !== this.lastRouteQ) { this.lastRouteQ = s.route.q; this.q = s.route.q; } // never wipe text being typed
@@ -47,15 +50,7 @@ export class Sidebar extends LitElement {
   override disconnectedCallback() { this.unsub?.(); super.disconnectedCallback(); }
 
   private async reloadAll() {
-    // Serialize with expandTo: a folder change arriving while the tree is
-    // being reloaded must expand the new tree, not the one being replaced.
-    const run = async () => {
-      this.root = { ...this.root, children: null };
-      await this.load(this.root);
-    };
-    this.rootLoading = this.rootLoading.then(run, run);
-    await this.rootLoading;
-    await this.expandTo(this.s.route.folder);
+    await this.rootAt(this.s.route.folder);
     this.loadTypes(this.s.route.folder);
   }
 
@@ -69,24 +64,25 @@ export class Sidebar extends LitElement {
     this.requestUpdate();
   }
 
-  private async expandTo(folder: string) {
-    await this.rootLoading;
-    if (!this.root.children) await this.load(this.root);
-    let cur = this.root;
+  // The tree is rooted at the folder being worked in: a large repository
+  // shows only what lies below, the way up is the "up" row and the header
+  // breadcrumb. Carets still expand in place without navigating.
+  private async rootAt(folder: string) {
+    const seq = ++this.rootSeq;
     const parts = folder.split("/").filter(Boolean);
-    for (let i = 0; i < parts.length; i++) {
-      const path = parts.slice(0, i + 1).join("/");
-      let next = cur.children?.find((c) => c.info.path === path);
-      if (!next) {
-        // folder not known yet (freshly created): add a placeholder node
-        next = { info: { name: parts[i], path, artifacts: 0, hasConfig: false }, children: null, open: false };
-        cur.children = [...(cur.children ?? []), next];
-      }
-      next.open = true;
-      if (!next.children) await this.load(next);
-      cur = next;
-    }
-    this.requestUpdate();
+    const name = parts[parts.length - 1] ?? "Repository";
+    const root: Node = { info: { name, path: folder, artifacts: 0, hasConfig: false }, children: null, open: true };
+    if (this.root.info.path !== folder) { this.root = root; this.filter = ""; } // show the new place at once
+    const [parent] = await Promise.all([
+      parts.length ? api.tree(parts.slice(0, -1).join("/"), false, 1).catch(() => null) : null,
+      this.load(root),
+    ]);
+    if (seq !== this.rootSeq) return;
+    const info = parent?.folders.find((f) => f.path === folder);
+    if (info) root.info = info;
+    // not in the repository yet (planned with "New folder"): a placeholder
+    else if (parts.length && parent && !root.children?.length) root.pending = true;
+    this.root = root;
   }
 
   private async loadTypes(folder: string) {
@@ -108,6 +104,20 @@ export class Sidebar extends LitElement {
     return c;
   }
 
+  // Folders exist only through their content (Git tracks no empty
+  // directories), so a new folder is a destination: it is shown as a
+  // placeholder and becomes real with the first artifact saved there.
+  private newFolder = async () => {
+    const parent = this.s.route.folder;
+    const name = await store.prompt("New folder", {
+      text: `Subfolder of ${parent || "the repository root"}. It is created with the first artifact you save in it.`,
+      placeholder: "name or sub/path", confirmLabel: "Open",
+    });
+    const rel = (name ?? "").trim().replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
+    if (!rel) return;
+    navigate({ folder: parent ? `${parent}/${rel}` : rel, guid: null, type: "", q: "" });
+  };
+
   private toggle(n: Node) {
     n.open = !n.open;
     if (n.open && !n.children) this.load(n);
@@ -119,14 +129,31 @@ export class Sidebar extends LitElement {
     const selected = r.folder === n.info.path && !r.type;
     const hasKids = n.children === null || n.children.length > 0;
     return html`<li>
-      <div class="row ${selected ? "selected" : ""}" data-folder=${n.info.path} @click=${() => { navigate({ folder: n.info.path, guid: null, type: "", q: "" }); store.closeNavIfOverlay(); }}>
+      <div class="row ${selected ? "selected" : ""} ${n.pending ? "pending" : ""}" title=${n.pending ? "Not in the repository yet: created with the first artifact saved here" : ""} data-folder=${n.info.path} @click=${() => { navigate({ folder: n.info.path, guid: null, type: "", q: "" }); store.closeNavIfOverlay(); }}>
         <span class="caret ${hasKids ? "" : "empty"}" @click=${(e: Event) => { e.stopPropagation(); this.toggle(n); }}>${n.open ? "▾" : "▸"}</span>
         <span class="name">${depth === 0 ? html`<b>${n.info.name}</b>` : n.info.name}</span>
         ${n.info.hasConfig ? html`<span class="badge" title="has a .groundsill metadata directory">.groundsill</span>` : nothing}
         ${n.info.artifacts ? html`<span class="count">${n.info.artifacts}</span>` : nothing}
       </div>
-      ${n.open && n.children?.length ? html`<ul>${n.children.map((c) => this.node(c, depth + 1))}</ul>` : nothing}
+      ${n.open && n.children?.length ? html`<ul>
+        ${depth === 0 && n.children.length > FILTER_FROM ? html`<li><input class="tree-filter" type="search" data-test="folder-filter" placeholder="Filter ${n.children.length} folders…"
+          .value=${this.filter} @input=${(e: Event) => (this.filter = (e.target as HTMLInputElement).value)} /></li>` : nothing}
+        ${this.visible(n, depth).map((c) => this.node(c, depth + 1))}</ul>` : nothing}
     </li>`;
+  }
+
+  private visible(n: Node, depth: number): Node[] {
+    const f = this.filter.trim().toLowerCase();
+    return depth === 0 && f ? n.children!.filter((c) => c.info.name.toLowerCase().includes(f)) : n.children!;
+  }
+
+  private up() {
+    const parts = this.s.route.folder.split("/").filter(Boolean);
+    if (!parts.length) return nothing;
+    const parent = parts.slice(0, -1).join("/");
+    return html`<div class="row up" data-test="nav-up" title="Up to ${parent || "the repository root"}"
+      @click=${() => navigate({ folder: parent, guid: null, type: "", q: "" })}>
+      <span class="caret">↑</span><span class="name">${parts[parts.length - 2] ?? "Repository"}</span></div>`;
   }
 
   override render() {
@@ -143,7 +170,9 @@ export class Sidebar extends LitElement {
           <input type="checkbox" .checked=${r.subtree} data-test="subtree" @change=${(e: Event) => navigate({ subtree: (e.target as HTMLInputElement).checked })} /></label>
       </div>
       <div class="nav-scroll">
-        <div class="nav-section"><div class="nav-title"><span>Folders</span></div>
+        <div class="nav-section"><div class="nav-title"><span>Folders</span>
+          <button class="btn sm" data-test="new-folder" title="New subfolder of the current folder" @click=${this.newFolder}>＋</button></div>
+          <div class="tree">${this.up()}</div>
           <ul class="tree">${this.node(this.root, 0)}</ul></div>
         <div class="nav-section"><div class="nav-title"><span>By type${r.folder ? html` <span class="muted">in ${r.folder}</span>` : nothing}</span></div>
           ${!this.types.length ? html`<div class="muted small" style="padding:4px 8px">No schemas visible here yet.</div>` : nothing}

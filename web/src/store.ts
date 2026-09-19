@@ -29,6 +29,10 @@ export interface PromptOptions {
   value?: string;
   placeholder?: string;
   confirmLabel?: string;
+  /** The value is a folder path: show the folder field instead of a plain input. */
+  folder?: boolean;
+  /** With folder: the folder being moved, which is no typo candidate. */
+  ignore?: string;
 }
 
 export interface State {

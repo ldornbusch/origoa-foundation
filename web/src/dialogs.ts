@@ -6,6 +6,7 @@ import { store, type Dialog, type State } from "./store";
 import type { Kind, Schema, Summary } from "./types";
 import { collectionOf, displayName, kindIcon, kindLabel, kindPlural, label } from "./util";
 import "./fields";
+import "./folder-field";
 
 // Modal dialogs: the "+ New" flow (choose a type → empty schema-generated
 // form → create), the artifact picker, and confirmations.
@@ -66,7 +67,9 @@ export class Dialogs extends LitElement {
     return html`<h2>${d.title as string}</h2>
       ${d.text ? html`<p class="hint">${d.text as string}</p>` : nothing}
       <form class="prompt-form" @submit=${submit}>
-        <input type="text" data-test="prompt" .value=${(d.value as string) ?? ""} placeholder=${(d.placeholder as string) ?? ""} aria-label=${d.title as string}>
+        ${d.folder
+          ? html`<groundsill-folder-field test="prompt" .value=${(d.value as string) ?? ""} .ignore=${(d.ignore as string) ?? ""}></groundsill-folder-field>`
+          : html`<input type="text" data-test="prompt" .value=${(d.value as string) ?? ""} placeholder=${(d.placeholder as string) ?? ""} aria-label=${d.title as string}>`}
         <div class="foot"><button type="button" class="btn" @click=${() => this.dismiss()}>Cancel</button>
         <button type="submit" class="btn primary">${(d.confirmLabel as string) ?? "OK"}</button></div>
       </form>`;
@@ -179,7 +182,7 @@ export class NewDialog extends LitElement {
           <div class="field"><label for="new-title">Title<span class="req">*</span></label><div class="value">
             <input id="new-title" type="text" required .value=${this.titleText} @input=${(e: Event) => (this.titleText = (e.target as HTMLInputElement).value)} /></div></div>
           <div class="field"><label for="new-path">Folder</label><div class="value">
-            <input id="new-path" type="text" .value=${this.path} placeholder="(repository root)" @input=${(e: Event) => (this.path = (e.target as HTMLInputElement).value)} />
+            <groundsill-folder-field inputId="new-path" test="new-path" .value=${this.path} @folder-change=${(e: CustomEvent<string>) => (this.path = e.detail)}></groundsill-folder-field>
             <div class="help">Folders organize; identity stays with the GUID. Schemas apply lexically along this path.</div></div></div>
           <div class="field"><label for="new-hid">HID</label><div class="value">
             <input id="new-hid" type="text" .value=${this.hid} placeholder=${s.hid ? `auto: ${s.hid.prefix}${s.hid.separator ?? "-"}n` : "optional, e.g. REQ-42"} @input=${(e: Event) => (this.hid = (e.target as HTMLInputElement).value)} /></div></div>
