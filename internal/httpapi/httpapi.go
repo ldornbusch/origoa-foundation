@@ -1,4 +1,4 @@
-// Package httpapi is the REST layer of the Origoa Foundation (design guide
+// Package httpapi is the REST layer of Groundsill (design guide
 // §6): artifact APIs (CRUD for entries, documents, links, comments) and
 // service APIs (search, tree, effective schemas, overlay analysis, workflow
 // evaluation, relationship analysis, history, validation, reindex). It is
@@ -16,10 +16,10 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/thomdehoog/origoa/internal/foundation"
-	"github.com/thomdehoog/origoa/internal/model"
-	"github.com/thomdehoog/origoa/internal/ojson"
-	"github.com/thomdehoog/origoa/internal/projection"
+	"github.com/thomdehoog/groundsill/internal/foundation"
+	"github.com/thomdehoog/groundsill/internal/model"
+	"github.com/thomdehoog/groundsill/internal/ojson"
+	"github.com/thomdehoog/groundsill/internal/projection"
 )
 
 const (

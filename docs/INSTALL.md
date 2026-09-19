@@ -1,4 +1,4 @@
-# Installing and running Origoa
+# Installing and running Groundsill
 
 ## 1. Prerequisites
 
@@ -20,7 +20,7 @@ connecting role needs `CREATE` on the database (or create the extension once as 
 `CREATE EXTENSION ltree;`).
 
 ```sh
-createdb origoa
+createdb groundsill
 ```
 
 The database is disposable: everything in it is rebuilt from Git by `POST /api/repository/reindex`
@@ -29,31 +29,31 @@ or automatically when the stored revision no longer matches the repository.
 ## 3. Build
 
 ```sh
-git clone https://github.com/thomdehoog/origoa-foundation-for-lutz.git origoa
-cd origoa
-make build            # builds web/dist (npm install + typecheck + bundle) and bin/origoad
+git clone https://github.com/thomdehoog/origoa-foundation-for-lutz.git groundsill
+cd groundsill
+make build            # builds web/dist (npm install + typecheck + bundle) and bin/groundsilld
 ```
 
 API-only build without Node:
 
 ```sh
-go build -o bin/origoad ./cmd/origoad
+go build -o bin/groundsilld ./cmd/groundsilld
 ```
 
 ## 4. Run
 
 ```sh
-./bin/origoad -repo data/origoa.git -addr 127.0.0.1:8080 -web web/dist \
-  -db "postgres://user:password@localhost:5432/origoa?sslmode=disable"
+./bin/groundsilld -repo data/groundsill.git -addr 127.0.0.1:8080 -web web/dist \
+  -db "postgres://user:password@localhost:5432/groundsill?sslmode=disable"
 ```
 
 | Flag / env | Default | Meaning |
 |---|---|---|
-| `-repo` / `ORIGOA_REPO` | `data/origoa.git` | path of the **bare** Git repository; created if missing. This is your data. |
-| `-branch` / `ORIGOA_BRANCH` | `main` | the branch the Foundation owns |
-| `-db` / `ORIGOA_DB` | *(required)* | PostgreSQL connection string |
-| `-addr` / `ORIGOA_ADDR` | `127.0.0.1:8080` | listen address |
-| `-web` / `ORIGOA_WEB` | `web/dist` | directory with the built client; `""` for API only |
+| `-repo` / `GROUNDSILL_REPO` | `data/groundsill.git` | path of the **bare** Git repository; created if missing. This is your data. |
+| `-branch` / `GROUNDSILL_BRANCH` | `main` | the branch the Foundation owns |
+| `-db` / `GROUNDSILL_DB` | *(required)* | PostgreSQL connection string |
+| `-addr` / `GROUNDSILL_ADDR` | `127.0.0.1:8080` | listen address |
+| `-web` / `GROUNDSILL_WEB` | `web/dist` | directory with the built client; `""` for API only |
 | `-watch` | `3s` | how often to check for direct Git pushes and resynchronize |
 
 Check it is alive:
@@ -70,7 +70,7 @@ Populate a demo domain and open <http://127.0.0.1:8080>:
 
 ## 5. Define your own domain
 
-Origoa has no built-in types. A domain is a set of schema and workflow files, stored through the
+Groundsill has no built-in types. A domain is a set of schema and workflow files, stored through the
 API (each store is one commit) or committed directly into the repository.
 
 **A workflow** — a state machine that artifact types can reference:
@@ -134,7 +134,7 @@ The response carries the permanent `guid`, the generated HID (`REQ-1`), the init
 and an `ETag`. Every write is a Git commit:
 
 ```sh
-git --git-dir=data/origoa.git log --oneline
+git --git-dir=data/groundsill.git log --oneline
 ```
 
 ## 6. Direct Git access
@@ -149,7 +149,7 @@ restructuring is restored with `POST /api/repository/maintenance/relocate-metada
 
 - **Authentication and TLS are not included** (outside the MVP scope of the design guide). Put an
   authenticating reverse proxy in front; do not expose the port directly.
-- **Back up the bare repository**: `git clone --mirror data/origoa.git` is a complete backup. The
+- **Back up the bare repository**: `git clone --mirror data/groundsill.git` is a complete backup. The
   database is derived.
 - **Several server processes** may share one repository and one database; writes are protected by
   the Git compare-and-swap and the database `processed_hash` CAS, and maintenance mode is
@@ -158,14 +158,14 @@ restructuring is restored with `POST /api/repository/maintenance/relocate-metada
 
   ```ini
   [Unit]
-  Description=Origoa Foundation
+  Description=Groundsill
   After=network.target postgresql.service
 
   [Service]
-  ExecStart=/opt/origoa/bin/origoad -repo /var/lib/origoa/origoa.git -addr 127.0.0.1:8080 \
-    -web /opt/origoa/web/dist -db postgres://origoa:secret@localhost/origoa?sslmode=disable
+  ExecStart=/opt/groundsill/bin/groundsilld -repo /var/lib/groundsill/groundsill.git -addr 127.0.0.1:8080 \
+    -web /opt/groundsill/web/dist -db postgres://groundsill:secret@localhost/groundsill?sslmode=disable
   Restart=on-failure
-  User=origoa
+  User=groundsill
 
   [Install]
   WantedBy=multi-user.target
@@ -173,7 +173,7 @@ restructuring is restored with `POST /api/repository/maintenance/relocate-metada
 
 ## Troubleshooting
 
-- **`-db (or ORIGOA_DB) is required`** — the projection database is mandatory; see §2.
+- **`-db (or GROUNDSILL_DB) is required`** — the projection database is mandatory; see §2.
 - **`projection schema: ... ltree`** — the `ltree` extension could not be created: install
   `postgresql-contrib` or create the extension as a superuser once.
 - **HTTP 503 with `Retry-After`** — maintenance mode (a reindex or a large folder move is running;

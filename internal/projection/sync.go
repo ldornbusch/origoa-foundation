@@ -8,9 +8,9 @@ import (
 	"log"
 	"time"
 
-	"github.com/thomdehoog/origoa/internal/gitx"
-	"github.com/thomdehoog/origoa/internal/model"
-	"github.com/thomdehoog/origoa/internal/scanner"
+	"github.com/thomdehoog/groundsill/internal/gitx"
+	"github.com/thomdehoog/groundsill/internal/model"
+	"github.com/thomdehoog/groundsill/internal/scanner"
 )
 
 // Sync brings the projection to the repository head (design guide §5.13):

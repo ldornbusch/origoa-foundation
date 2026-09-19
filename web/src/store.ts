@@ -51,7 +51,7 @@ class Store {
     status: null,
     connected: false,
     session: "",
-    user: localStorage.getItem("origoa.user") || "",
+    user: localStorage.getItem("groundsill.user") || "",
     selection: null,
     selectionError: null,
     loading: false,
@@ -60,7 +60,7 @@ class Store {
     dialog: null,
     picker: null,
     refreshTick: 0,
-    navCollapsed: localStorage.getItem("origoa.nav") === "collapsed",
+    navCollapsed: localStorage.getItem("groundsill.nav") === "collapsed",
   };
   private listeners = new Set<Listener>();
   private toastSeq = 0;
@@ -95,13 +95,13 @@ class Store {
   }
 
   setUser(name: string) {
-    localStorage.setItem("origoa.user", name);
+    localStorage.setItem("groundsill.user", name);
     this.set({ user: name });
   }
 
   toggleNav() {
     const c = !this.state.navCollapsed;
-    localStorage.setItem("origoa.nav", c ? "collapsed" : "open");
+    localStorage.setItem("groundsill.nav", c ? "collapsed" : "open");
     this.set({ navCollapsed: c });
   }
 }

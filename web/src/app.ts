@@ -15,7 +15,7 @@ import "./toast";
 // Application shell (design guide §7.2): header, navigation sidebar, and
 // the main workspace with the artifact overview above the detail view.
 
-@customElement("origoa-app")
+@customElement("groundsill-app")
 export class App extends LitElement {
   private unsub?: () => void;
   private s!: State;
@@ -51,7 +51,7 @@ export class App extends LitElement {
   private onKey = (e: KeyboardEvent) => {
     const t = e.target as HTMLElement;
     const typing = t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable);
-    if (e.key === "/" && !typing) { e.preventDefault(); this.querySelector<HTMLInputElement>("origoa-sidebar input[type=search]")?.focus(); }
+    if (e.key === "/" && !typing) { e.preventDefault(); this.querySelector<HTMLInputElement>("groundsill-sidebar input[type=search]")?.focus(); }
     if (e.key === "n" && !typing && !this.s.dialog) { e.preventDefault(); store.set({ dialog: { kind: "new", folder: this.s.route.folder } }); }
     if (e.key === "Escape" && !typing && this.s.route.guid && !this.s.dialog) navigate({ guid: null, expanded: false });
   };
@@ -77,7 +77,7 @@ export class App extends LitElement {
     return html`<div class="shell ${navCollapsed ? "nav-collapsed" : ""}">
       <header class="header">
         <button class="btn sm icon" title="Toggle navigation" @click=${() => store.toggleNav()}>☰</button>
-        <a class="brand" href="/" @click=${(e: Event) => { e.preventDefault(); navigate({ folder: "", guid: null, q: "", type: "", kind: "" }); }}><span class="logo"></span>Origoa</a>
+        <a class="brand" href="/" @click=${(e: Event) => { e.preventDefault(); navigate({ folder: "", guid: null, q: "", type: "", kind: "" }); }}><span class="logo"></span>Groundsill</a>
         <nav class="crumbs">${folderCrumbs(route.folder).map((c, i) => html`${i ? html`<span>/</span>` : nothing}<a href="#" @click=${(e: Event) => { e.preventDefault(); navigate({ folder: c.path, guid: null, type: "" }); }}>${c.name}</a>`)}</nav>
         <span class="spacer"></span>
         ${p?.maintenance && p.total ? html`<div class="progress" title=${p.phase ?? ""}><div style=${`width:${Math.round((100 * p.progress) / Math.max(1, p.total))}%`}></div></div>` : nothing}
@@ -85,14 +85,14 @@ export class App extends LitElement {
         <button class="btn sm" title="Rebuild projection from Git" @click=${() => api.reindex().then(() => store.toast("Reindex started", "info")).catch((e) => store.toast(e.message, "error"))}>Reindex</button>
         <button class="btn sm" title="Set your name" @click=${this.setName}>${this.s.user || "anonymous"}</button>
       </header>
-      <origoa-sidebar></origoa-sidebar>
+      <groundsill-sidebar></groundsill-sidebar>
       <div class="main ${mainClass}">
-        <origoa-overview></origoa-overview>
-        ${route.guid ? (this.selectedKind === "document" ? html`<origoa-document .guid=${route.guid}></origoa-document>` : html`<origoa-detail .guid=${route.guid}></origoa-detail>`)
+        <groundsill-overview></groundsill-overview>
+        ${route.guid ? (this.selectedKind === "document" ? html`<groundsill-document .guid=${route.guid}></groundsill-document>` : html`<groundsill-detail .guid=${route.guid}></groundsill-detail>`)
           : html`<div class="empty-state" style="display:grid;place-items:center"><div><div class="big">Select an artifact</div>Pick a row above, search with <kbd>/</kbd>, or create one with <kbd>n</kbd>.</div></div>`}
       </div>
     </div>
-    <origoa-dialogs></origoa-dialogs>
-    <origoa-toasts></origoa-toasts>`;
+    <groundsill-dialogs></groundsill-dialogs>
+    <groundsill-toasts></groundsill-toasts>`;
   }
 }

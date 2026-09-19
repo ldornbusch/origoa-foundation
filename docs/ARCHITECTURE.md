@@ -4,7 +4,7 @@ A guided tour of the repository: what each package does and how a request flows 
 Layers only depend downward.
 
 ```
-cmd/origoad              wiring: flags, HTTP server, graceful shutdown
+cmd/groundsilld              wiring: flags, HTTP server, graceful shutdown
   └─ internal/httpapi      REST + WebSocket: decoding, ETag/If-Match, status codes, presence hub
        └─ internal/foundation   the service: operations, the §10.1 transaction, service views
             ├─ internal/projection   PostgreSQL projection (sync, replay, reindex, queries, validation)
@@ -43,7 +43,7 @@ Fuzzed for the fixed-point property.
 ## internal/model — the domain vocabulary
 
 - `identity.go` — kinds, GUID generation/validation, HID and type-id rules.
-- `folder.go` — `CleanFolder`, the single gate for user-supplied folder paths (traversal, `.origoa`,
+- `folder.go` — `CleanFolder`, the single gate for user-supplied folder paths (traversal, `.groundsill`,
   GUID-shaped segments, control characters, pathspec magic, depth/length limits), plus lineage
   helpers.
 - `fields.go` — the field types of design guide §4.6 and value validation.

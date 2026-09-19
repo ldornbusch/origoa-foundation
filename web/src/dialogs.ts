@@ -10,7 +10,7 @@ import "./fields";
 // Modal dialogs: the "+ New" flow (choose a type → empty schema-generated
 // form → create), the artifact picker, and confirmations.
 
-@customElement("origoa-dialogs")
+@customElement("groundsill-dialogs")
 export class Dialogs extends LitElement {
   private unsub?: () => void;
   private s!: State;
@@ -32,14 +32,14 @@ export class Dialogs extends LitElement {
     const p = this.s?.picker;
     let body;
     switch (d?.kind) {
-      case "new": body = html`<origoa-new-dialog .dialog=${d}></origoa-new-dialog>`; break;
+      case "new": body = html`<groundsill-new-dialog .dialog=${d}></groundsill-new-dialog>`; break;
       case "confirm": body = this.confirm(d); break;
       default: body = nothing;
     }
     return html`${d ? html`<div class="backdrop" @click=${(e: Event) => { if (e.target === e.currentTarget) store.set({ dialog: null }); }}>
         <div class="dialog" role="dialog" aria-modal="true">${body}</div></div>` : nothing}
       ${p ? html`<div class="backdrop picker-layer" @click=${(e: Event) => { if (e.target === e.currentTarget) { const c = p.onCancel as (() => void) | undefined; store.set({ picker: null }); c?.(); } }}>
-        <div class="dialog" role="dialog" aria-modal="true"><origoa-picker .dialog=${p}></origoa-picker></div></div>` : nothing}`;
+        <div class="dialog" role="dialog" aria-modal="true"><groundsill-picker .dialog=${p}></groundsill-picker></div></div>` : nothing}`;
   }
 
   private confirm(d: Dialog) {
@@ -50,7 +50,7 @@ export class Dialogs extends LitElement {
   }
 }
 
-@customElement("origoa-new-dialog")
+@customElement("groundsill-new-dialog")
 export class NewDialog extends LitElement {
   dialog!: Dialog;
   @state() private types: Schema[] = [];
@@ -173,8 +173,8 @@ export class NewDialog extends LitElement {
             <button type="button" class="btn sm" @click=${() => this.pickArtifact("target")}>${this.target ? "Change…" : "Select…"}</button></div></div>
           <div class="field"><label for="new-text">Text<span class="req">*</span></label><div class="value">
             <textarea id="new-text" required .value=${this.text} @input=${(e: Event) => (this.text = (e.target as HTMLTextAreaElement).value)}></textarea></div></div>` : nothing}
-        ${(s.fields ?? []).filter((f) => f.type !== "workflow").map((f) => html`<origoa-field .field=${f} .value=${this.values[f.id]}
-          @field-change=${(e: CustomEvent) => { this.values = { ...this.values, [e.detail.id]: e.detail.value }; }}></origoa-field>`)}
+        ${(s.fields ?? []).filter((f) => f.type !== "workflow").map((f) => html`<groundsill-field .field=${f} .value=${this.values[f.id]}
+          @field-change=${(e: CustomEvent) => { this.values = { ...this.values, [e.detail.id]: e.detail.value }; }}></groundsill-field>`)}
         ${s.workflows?.length ? html`<div class="help" style="margin-top:8px">Workflows ${s.workflows.join(", ")} start in their initial state.</div>` : nothing}
         <div class="foot">
           <button type="button" class="btn" @click=${() => store.set({ dialog: null })}>Cancel</button>
@@ -211,7 +211,7 @@ export class NewDialog extends LitElement {
   }
 }
 
-@customElement("origoa-picker")
+@customElement("groundsill-picker")
 export class Picker extends LitElement {
   dialog!: Dialog;
   @state() private q = "";

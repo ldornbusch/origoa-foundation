@@ -1,7 +1,7 @@
 package model
 
 import (
-	"github.com/thomdehoog/origoa/internal/ojson"
+	"github.com/thomdehoog/groundsill/internal/ojson"
 )
 
 // MaxOverlayDepth bounds base chains.

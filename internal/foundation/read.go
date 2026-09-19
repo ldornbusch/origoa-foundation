@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/thomdehoog/origoa/internal/gitx"
-	"github.com/thomdehoog/origoa/internal/model"
-	"github.com/thomdehoog/origoa/internal/ojson"
-	"github.com/thomdehoog/origoa/internal/projection"
+	"github.com/thomdehoog/groundsill/internal/gitx"
+	"github.com/thomdehoog/groundsill/internal/model"
+	"github.com/thomdehoog/groundsill/internal/ojson"
+	"github.com/thomdehoog/groundsill/internal/projection"
 )
 
 // Get returns an artifact: projected metadata plus its document from Git.
@@ -336,10 +336,10 @@ func (f *Foundation) History(ctx context.Context, guid string, limit int) ([]git
 	specs := []string{
 		":(glob)**/" + guid + "/**",
 		":(glob)" + guid + "/**",
-		":(glob)**/.origoa/links/" + guid + ".json",
-		":(glob)**/.origoa/comments/" + guid + ".json",
-		":(glob).origoa/links/" + guid + ".json",
-		":(glob).origoa/comments/" + guid + ".json",
+		":(glob)**/.groundsill/links/" + guid + ".json",
+		":(glob)**/.groundsill/comments/" + guid + ".json",
+		":(glob).groundsill/links/" + guid + ".json",
+		":(glob).groundsill/comments/" + guid + ".json",
 	}
 	log, err := f.Repo.Log(ctx, head, specs, limit)
 	if err != nil {

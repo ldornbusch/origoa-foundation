@@ -55,7 +55,7 @@ func Open(dir, branch string) (*Repo, error) {
 	if err != nil {
 		return nil, err
 	}
-	r := &Repo{Dir: abs, Branch: branch, Author: "Origoa", Email: "origoa@localhost"}
+	r := &Repo{Dir: abs, Branch: branch, Author: "Groundsill", Email: "groundsill@localhost"}
 	if _, err := os.Stat(filepath.Join(abs, "HEAD")); err != nil {
 		if err := os.MkdirAll(abs, 0o755); err != nil {
 			return nil, err
@@ -265,7 +265,7 @@ type Op struct {
 // object name without publishing it (design guide §10.1: "the new commit
 // object exists but is not yet visible"). parent may be "" for a root commit.
 func (r *Repo) BuildCommit(ctx context.Context, parent, message string, ops []Op) (string, error) {
-	idx, err := os.CreateTemp("", "origoa-index-*")
+	idx, err := os.CreateTemp("", "groundsill-index-*")
 	if err != nil {
 		return "", err
 	}

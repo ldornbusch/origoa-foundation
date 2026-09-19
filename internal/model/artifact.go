@@ -5,7 +5,7 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/thomdehoog/origoa/internal/ojson"
+	"github.com/thomdehoog/groundsill/internal/ojson"
 )
 
 // Artifact is a typed view over an artifact's JSON document. The document

@@ -3,7 +3,7 @@ package scanner
 import (
 	"testing"
 
-	"github.com/thomdehoog/origoa/internal/model"
+	"github.com/thomdehoog/groundsill/internal/model"
 )
 
 func TestClassify(t *testing.T) {
@@ -15,22 +15,22 @@ func TestClassify(t *testing.T) {
 		kind string
 		rel  bool
 	}{
-		{g + "/.origoa.json", Artifact, "", true},
-		{"a/b/" + g + "/.origoa.json", Artifact, "", true},
+		{g + "/.groundsill.json", Artifact, "", true},
+		{"a/b/" + g + "/.groundsill.json", Artifact, "", true},
 		{"a/" + g + "/spec.pdf", Attachment, "", true},
 		{"a/" + g + "/sub/x.png", Attachment, "", true},
-		{".origoa/schemas/req.json", ConfigFile, ConfigSchemas, true},
-		{"a/.origoa/workflows/dev.json", ConfigFile, ConfigWorkflows, true},
-		{"a/.origoa/links/" + g + ".json", ConfigFile, ConfigLinks, true},
-		{"a/.origoa/comments/" + g + ".json", ConfigFile, ConfigComments, true},
-		{".origoa/scanner.json", ConfigFile, ConfigScanner, true},
-		{"a/.origoa/scanner.json", ConfigFile, ConfigOther, false},
-		{".origoa/ext/thing.json", ConfigFile, ConfigOther, false},
+		{".groundsill/schemas/req.json", ConfigFile, ConfigSchemas, true},
+		{"a/.groundsill/workflows/dev.json", ConfigFile, ConfigWorkflows, true},
+		{"a/.groundsill/links/" + g + ".json", ConfigFile, ConfigLinks, true},
+		{"a/.groundsill/comments/" + g + ".json", ConfigFile, ConfigComments, true},
+		{".groundsill/scanner.json", ConfigFile, ConfigScanner, true},
+		{"a/.groundsill/scanner.json", ConfigFile, ConfigOther, false},
+		{".groundsill/ext/thing.json", ConfigFile, ConfigOther, false},
 		{"README.md", Ignore, "", false},
 		{"a/b/notes.txt", Ignore, "", false},
 		{g, Ignore, "", false},
 		{"", Ignore, "", false},
-		{"/" + g + "/.origoa.json", Ignore, "", false},
+		{"/" + g + "/.groundsill.json", Ignore, "", false},
 	}
 	for _, c := range cases {
 		m, rel := s.Match(c.path)
@@ -38,25 +38,25 @@ func TestClassify(t *testing.T) {
 			t.Errorf("%q: got %v/%q/%v want %v/%q/%v", c.path, m.Category, m.ConfigKind, rel, c.cat, c.kind, c.rel)
 		}
 	}
-	m := s.Classify("a/b/" + g + "/.origoa.json")
+	m := s.Classify("a/b/" + g + "/.groundsill.json")
 	if m.Folder != "a/b" || m.GUID != g {
 		t.Fatalf("%+v", m)
 	}
-	m = s.Classify("x/.origoa/links/" + g + ".json")
+	m = s.Classify("x/.groundsill/links/" + g + ".json")
 	if m.Folder != "x" || m.Name != g {
 		t.Fatalf("%+v", m)
 	}
 	// Config folder wins over a GUID that appears later, and vice versa.
-	if m := s.Classify(".origoa/" + g + "/.origoa.json"); m.Category != ConfigFile || m.ConfigKind != ConfigOther {
+	if m := s.Classify(".groundsill/" + g + "/.groundsill.json"); m.Category != ConfigFile || m.ConfigKind != ConfigOther {
 		t.Fatalf("%+v", m)
 	}
-	if m := s.Classify(g + "/.origoa/schemas/x.json"); m.Category != Attachment {
+	if m := s.Classify(g + "/.groundsill/schemas/x.json"); m.Category != Attachment {
 		t.Fatalf("%+v", m)
 	}
 }
 
 func TestConfig(t *testing.T) {
-	c, err := ParseConfig([]byte(`{"guid_files":[".origoa.json","artifact.json"],"config_folders":[".origoa",".meta"],"indexers":["foundation","ext"]}`))
+	c, err := ParseConfig([]byte(`{"guid_files":[".groundsill.json","artifact.json"],"config_folders":[".groundsill",".meta"],"indexers":["foundation","ext"]}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,8 +84,8 @@ func TestConfig(t *testing.T) {
 }
 
 func FuzzClassify(f *testing.F) {
-	f.Add("a/.origoa/links/x.json")
-	f.Add(model.NewGUID() + "/.origoa.json")
+	f.Add("a/.groundsill/links/x.json")
+	f.Add(model.NewGUID() + "/.groundsill.json")
 	f.Fuzz(func(t *testing.T, p string) {
 		s := Default()
 		m := s.Classify(p)

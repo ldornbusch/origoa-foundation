@@ -1,6 +1,6 @@
 <div align="center">
 
-# Origoa Foundation
+# Groundsill
 
 **A Git-backed storage platform for building information management applications**
 — requirements, issues, PLM, documentation — where the domain model is configuration, not code.
@@ -11,7 +11,7 @@
 [![Projection](https://img.shields.io/badge/Projection-PostgreSQL-4169E1?logo=postgresql&logoColor=white)](docs/INSTALL.md)
 [![Source of truth](https://img.shields.io/badge/Source%20of%20truth-Git-F05032?logo=git&logoColor=white)](#how-it-works)
 
-<img src="docs/screenshot.png" alt="Origoa web client: folder and type navigation, the artifact overview with HIDs and workflow states, and a schema-generated detail view" width="900">
+<img src="docs/screenshot.png" alt="Groundsill web client: folder and type navigation, the artifact overview with HIDs and workflow states, and a schema-generated detail view" width="900">
 
 *The generic client renders itself from the repository's schemas: navigation, overview columns,
 detail sections, workflows and relationship types all come from configuration.*
@@ -27,20 +27,20 @@ native artifact kinds and nothing about any business domain:
 
 | Kind | Purpose | Stored at |
 |---|---|---|
-| **Entry** | Reusable structured object (requirement, ticket, part, …); may be an *overlay* of another entry | `<folder>/<guid>/.origoa.json` |
-| **Document** | Hierarchical composition: sections, text, media and references to entries | `<folder>/<guid>/.origoa.json` |
-| **Link** | Directed, typed relationship between any two artifacts | `<scope>/.origoa/links/<guid>.json` |
-| **Comment** | Threaded annotation on any artifact (whole artifact, a field, a document element) | `<scope>/.origoa/comments/<guid>.json` |
+| **Entry** | Reusable structured object (requirement, ticket, part, …); may be an *overlay* of another entry | `<folder>/<guid>/.groundsill.json` |
+| **Document** | Hierarchical composition: sections, text, media and references to entries | `<folder>/<guid>/.groundsill.json` |
+| **Link** | Directed, typed relationship between any two artifacts | `<scope>/.groundsill/links/<guid>.json` |
+| **Comment** | Threaded annotation on any artifact (whole artifact, a field, a document element) | `<scope>/.groundsill/comments/<guid>.json` |
 
 Everything domain-specific lives in JSON configuration inside the repository:
 
-- **Schemas** (`<scope>/.origoa/schemas/<type>.json`) define artifact types — fields with the
+- **Schemas** (`<scope>/.groundsill/schemas/<type>.json`) define artifact types — fields with the
   Foundation's generic field types, HID generation, workflow assignments, link-type endpoint rules
   and cardinality, presentation hints. Schemas compose **lexically** from the repository root to the
   artifact: nearer definitions refine or replace, `"inheritance": "off"` severs everything above.
-- **Workflows** (`<scope>/.origoa/workflows/<id>.json`) are state machines; an artifact can be in
+- **Workflows** (`<scope>/.groundsill/workflows/<id>.json`) are state machines; an artifact can be in
   several at once, each with its own state.
-- **Scanner configuration** (`.origoa/scanner.json`) tells the repository scanner which markers to
+- **Scanner configuration** (`.groundsill/scanner.json`) tells the repository scanner which markers to
   look for (GUID files, configuration folders, indexers), so applications can extend the format.
 
 ## How it works
@@ -49,7 +49,7 @@ Everything domain-specific lives in JSON configuration inside the repository:
 
 **Git is the single source of truth.** A bare repository holds every artifact and every piece of
 configuration; each logical operation is exactly one commit with a structured message
-(`Entry REQ-42 in specs/boot created`, plus `Origoa-Op` / `Origoa-Guid` trailers). Commits are built
+(`Entry REQ-42 in specs/boot created`, plus `Groundsill-Op` / `Groundsill-Guid` trailers). Commits are built
 with plumbing only — no working directory — and published with a compare-and-swap `update-ref`.
 
 **PostgreSQL is a rebuildable projection.** Plain SQL, no ORM. It holds the GUID → path table, the
@@ -83,10 +83,10 @@ Requirements: Go 1.24+, git, Node 22+ (web client), PostgreSQL 14+ (16 recommend
 `ltree` extension available.
 
 ```sh
-createdb origoa
-make build                      # web/dist + bin/origoad
-./bin/origoad -repo data/origoa.git -addr 127.0.0.1:8080 -web web/dist \
-  -db "postgres://user:pass@localhost:5432/origoa?sslmode=disable"
+createdb groundsill
+make build                      # web/dist + bin/groundsilld
+./bin/groundsilld -repo data/groundsill.git -addr 127.0.0.1:8080 -web web/dist \
+  -db "postgres://user:pass@localhost:5432/groundsill?sslmode=disable"
 ./examples/seed.sh              # a demo requirements domain
 ```
 
@@ -150,7 +150,7 @@ cardinality, contention), 412 stale `If-Match`, 503 maintenance mode or projecti
 ## Repository layout
 
 ```
-cmd/origoad           server binary (flags: -repo -branch -db -addr -web -watch)
+cmd/groundsilld           server binary (flags: -repo -branch -db -addr -web -watch)
 internal/gitx         bare-repository plumbing: CAS commits, batched reads, first-parent history walks
 internal/ojson        order-preserving, format-preserving JSON
 internal/model        kinds, GUIDs/HIDs, folder rules, field types, schema composition, workflows, overlays, content
@@ -164,11 +164,11 @@ web/                  Lit + TypeScript client and Playwright tests
 ## Testing
 
 ```sh
-export ORIGOA_TEST_DSN=postgres://postgres:postgres@127.0.0.1:5432/origoa_test?sslmode=disable
+export GROUNDSILL_TEST_DSN=postgres://postgres:postgres@127.0.0.1:5432/groundsill_test?sslmode=disable
 make test        # go vet, gofmt gate, all packages with -race (PostgreSQL-backed tests skip without the DSN)
 make fuzz        # fuzz smoke: JSON codec fixed point, folder validation envelope, scanner classification
 make e2e         # REST end-to-end script against a temporary server
-make test-ui     # Playwright browser suites (needs the origoa_e2e database): the + New flow, every field type through the
+make test-ui     # Playwright browser suites (needs the groundsill_e2e database): the + New flow, every field type through the
                  # generated form, attachments, the block editor, workflows, relationships, overlays, HID renames, moves,
                  # search and deep links, keyboard shortcuts, responsive and dark mode, reindex, two users in separate
                  # contexts (presence, live updates, conflicts), plus adversarial cases (script-looking content,

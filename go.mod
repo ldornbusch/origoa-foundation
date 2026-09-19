@@ -1,4 +1,4 @@
-module github.com/thomdehoog/origoa
+module github.com/thomdehoog/groundsill
 
 go 1.24
 

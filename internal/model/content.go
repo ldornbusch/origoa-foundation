@@ -1,7 +1,7 @@
 package model
 
 import (
-	"github.com/thomdehoog/origoa/internal/ojson"
+	"github.com/thomdehoog/groundsill/internal/ojson"
 )
 
 // Document content is a tree of blocks (design guide §2.3.2): sections

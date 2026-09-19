@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"sort"
 
-	"github.com/thomdehoog/origoa/internal/model"
+	"github.com/thomdehoog/groundsill/internal/model"
 )
 
 // Issue is one finding of the repository validation service.

@@ -1,4 +1,4 @@
-/* Origoa web client — one stylesheet, light DOM components. */
+/* Groundsill web client — one stylesheet, light DOM components. */
 :root {
   color-scheme: light dark;
   --bg: #f6f7fb;
@@ -54,10 +54,10 @@ h1, h2, h3, h4 { margin: 0; font-weight: 600; }
 ::placeholder { color: var(--muted); }
 
 /* ---- layout ---- */
-origoa-app { display: block; height: 100%; }
+groundsill-app { display: block; height: 100%; }
 .shell { display: grid; grid-template-rows: var(--header-h) minmax(0, 1fr); grid-template-columns: var(--nav-w) minmax(0, 1fr); height: 100%; overflow: hidden; }
 .shell.nav-collapsed { grid-template-columns: 0 1fr; }
-.shell.nav-collapsed origoa-sidebar { display: none; }
+.shell.nav-collapsed groundsill-sidebar { display: none; }
 .header { grid-column: 1 / -1; display: flex; align-items: center; gap: 12px; padding: 0 14px; background: var(--panel); border-bottom: 1px solid var(--border); }
 .header .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 16px; letter-spacing: 0.2px; }
 .header .brand .logo { width: 26px; height: 26px; border-radius: 7px; background: var(--accent); display: grid; place-items: center; }
@@ -72,12 +72,12 @@ origoa-app { display: block; height: 100%; }
 .dot.bad { background: var(--danger); }
 .main { display: grid; grid-template-rows: minmax(160px, 38%) minmax(0, 1fr); min-height: 0; min-width: 0; }
 .main.expanded { grid-template-rows: 0 1fr; }
-.main.expanded origoa-overview { display: none; }
+.main.expanded groundsill-overview { display: none; }
 .main.document { grid-template-rows: 1fr; }
-.main.document origoa-overview { display: none; }
+.main.document groundsill-overview { display: none; }
 
 /* ---- sidebar ---- */
-origoa-sidebar { display: flex; flex-direction: column; min-height: 0; min-width: 0; background: var(--panel); border-right: 1px solid var(--border); }
+groundsill-sidebar { display: flex; flex-direction: column; min-height: 0; min-width: 0; background: var(--panel); border-right: 1px solid var(--border); }
 .nav-search { padding: 12px 12px 6px; display: flex; flex-direction: column; gap: 8px; }
 .nav-search input { width: 100%; }
 .nav-toggle { display: flex; align-items: center; justify-content: space-between; font-size: 12.5px; color: var(--muted); }
@@ -97,7 +97,7 @@ origoa-sidebar { display: flex; flex-direction: column; min-height: 0; min-width
 .tree ul { list-style: none; margin: 0; padding-left: 14px; }
 
 /* ---- overview ---- */
-origoa-overview { display: flex; flex-direction: column; min-height: 0; min-width: 0; border-bottom: 1px solid var(--border); background: var(--panel); }
+groundsill-overview { display: flex; flex-direction: column; min-height: 0; min-width: 0; border-bottom: 1px solid var(--border); background: var(--panel); }
 .toolbar { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
 .toolbar .title { font-weight: 600; }
 .toolbar .hint { color: var(--muted); font-size: 12.5px; }
@@ -148,7 +148,7 @@ textarea { resize: vertical; min-height: 70px; }
 .ref-chip button { border: none; background: none; cursor: pointer; color: var(--muted); padding: 0; }
 
 /* ---- detail ---- */
-origoa-detail { display: flex; flex-direction: column; min-height: 0; min-width: 0; background: var(--bg); }
+groundsill-detail { display: flex; flex-direction: column; min-height: 0; min-width: 0; background: var(--bg); }
 .detail-head { display: flex; align-items: center; gap: 10px; padding: 10px 16px; background: var(--panel); border-bottom: 1px solid var(--border); flex-wrap: wrap; }
 .detail-head h2 { font-size: 17px; flex: 1; min-width: 200px; }
 .detail-head .meta { color: var(--muted); font-size: 12.5px; display: flex; gap: 10px; align-items: center; }
@@ -199,7 +199,7 @@ origoa-detail { display: flex; flex-direction: column; min-height: 0; min-width:
 .notice.error { background: var(--danger-soft); color: var(--danger); }
 
 /* ---- document view ---- */
-origoa-document { display: grid; grid-template-columns: minmax(0, 1fr) auto; min-height: 0; min-width: 0; background: var(--bg); }
+groundsill-document { display: grid; grid-template-columns: minmax(0, 1fr) auto; min-height: 0; min-width: 0; background: var(--bg); }
 .doc-main { display: flex; flex-direction: column; min-height: 0; }
 .doc-toolbar { display: flex; gap: 6px; align-items: center; padding: 8px 14px; background: var(--panel); border-bottom: 1px solid var(--border); flex-wrap: wrap; }
 .doc-toolbar .sep { width: 1px; height: 22px; background: var(--border); margin: 0 4px; }
@@ -266,12 +266,12 @@ origoa-document { display: grid; grid-template-columns: minmax(0, 1fr) auto; min
 kbd { font: 11px var(--mono); border: 1px solid var(--border); border-bottom-width: 2px; border-radius: 4px; padding: 0 5px; color: var(--muted); }
 @media (max-width: 900px) {
   .shell { grid-template-columns: 0 1fr; }
-  .shell:not(.nav-collapsed) origoa-sidebar { position: fixed; top: var(--header-h); bottom: 0; left: 0; width: min(320px, 90vw); z-index: 30; box-shadow: var(--shadow); }
-  .shell.nav-collapsed origoa-sidebar { display: none; }
+  .shell:not(.nav-collapsed) groundsill-sidebar { position: fixed; top: var(--header-h); bottom: 0; left: 0; width: min(320px, 90vw); z-index: 30; box-shadow: var(--shadow); }
+  .shell.nav-collapsed groundsill-sidebar { display: none; }
   .detail-body { grid-template-columns: 1fr; }
   .quicklinks { display: none; }
   .field { grid-template-columns: 1fr; }
   .doc-page { padding: 24px 18px; }
-  origoa-document { grid-template-columns: 1fr; }
+  groundsill-document { grid-template-columns: 1fr; }
   .doc-side { width: 100%; }
 }

@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/thomdehoog/origoa/internal/model"
+	"github.com/thomdehoog/groundsill/internal/model"
 )
 
 // Query describes a search / filter request (design guide §5.10, §7.4).

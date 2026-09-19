@@ -11,8 +11,8 @@ import (
 
 	"github.com/coder/websocket"
 
-	"github.com/thomdehoog/origoa/internal/foundation"
-	"github.com/thomdehoog/origoa/internal/model"
+	"github.com/thomdehoog/groundsill/internal/foundation"
+	"github.com/thomdehoog/groundsill/internal/model"
 )
 
 // Hub is the WebSocket session service (design guide §7.16.3): it pushes

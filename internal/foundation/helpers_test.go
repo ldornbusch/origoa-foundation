@@ -1,6 +1,6 @@
 package foundation
 
-import "github.com/thomdehoog/origoa/internal/ojson"
+import "github.com/thomdehoog/groundsill/internal/ojson"
 
 type ojsonObject = ojson.Object
 

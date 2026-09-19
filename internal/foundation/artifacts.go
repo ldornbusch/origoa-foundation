@@ -8,11 +8,11 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/thomdehoog/origoa/internal/gitx"
-	"github.com/thomdehoog/origoa/internal/model"
-	"github.com/thomdehoog/origoa/internal/ojson"
-	"github.com/thomdehoog/origoa/internal/projection"
-	"github.com/thomdehoog/origoa/internal/scanner"
+	"github.com/thomdehoog/groundsill/internal/gitx"
+	"github.com/thomdehoog/groundsill/internal/model"
+	"github.com/thomdehoog/groundsill/internal/ojson"
+	"github.com/thomdehoog/groundsill/internal/projection"
+	"github.com/thomdehoog/groundsill/internal/scanner"
 )
 
 // View is an artifact as the API returns it: projected metadata plus the
@@ -80,9 +80,9 @@ func (f *Foundation) CreateArtifact(ctx context.Context, kind model.Kind, req *o
 		content := encode(doc, ojson.DefaultStyle)
 		path := model.ArtifactDir(folder, guid) + "/" + model.GUIDFile
 		cs := &changeset{subject: fmt.Sprintf("%s %s in %s created", kindName(kind), label(a), folderName(folder))}
-		cs.trailer("Origoa-Op", "create")
-		cs.trailer("Origoa-Guid", guid)
-		cs.trailer("Origoa-Kind", string(kind))
+		cs.trailer("Groundsill-Op", "create")
+		cs.trailer("Groundsill-Guid", guid)
+		cs.trailer("Groundsill-Kind", string(kind))
 		cs.ops = []gitx.Op{{Path: path, Content: content}}
 		cs.event = Event{Op: "create", GUID: guid, Kind: string(kind)}
 		cs.result = &View{Meta: summarize(a, folder, path, gitx.BlobSHA(content)), Data: doc, ETag: gitx.BlobSHA(content)}
@@ -344,11 +344,11 @@ func (f *Foundation) UpdateArtifact(ctx context.Context, guid string, ifMatch st
 			return &changeset{result: view}, nil // no logical change: no commit
 		}
 		cs := &changeset{subject: fmt.Sprintf("%s %s modified", kindName(a.Kind), label(a))}
-		cs.trailer("Origoa-Op", "update")
-		cs.trailer("Origoa-Guid", guid)
+		cs.trailer("Groundsill-Op", "update")
+		cs.trailer("Groundsill-Guid", guid)
 		if cur.HID != a.HID {
 			cs.subject = fmt.Sprintf("%s %s renamed to %s", kindName(a.Kind), label(cur.Artifact), label(a))
-			cs.trailer("Origoa-Hid-Previous", cur.HID)
+			cs.trailer("Groundsill-Hid-Previous", cur.HID)
 		}
 		cs.ops = []gitx.Op{{Path: cur.Loc.FilePath, Content: content}}
 		cs.event = Event{Op: "update", GUID: guid, Kind: string(a.Kind), Subject: a.Subject}
@@ -401,8 +401,8 @@ func (f *Foundation) DeleteArtifact(ctx context.Context, guid string, ifMatch st
 		if links+comments > 0 {
 			cs.subject += fmt.Sprintf(" (with %d links, %d comments)", links, comments)
 		}
-		cs.trailer("Origoa-Op", "delete")
-		cs.trailer("Origoa-Guid", guid)
+		cs.trailer("Groundsill-Op", "delete")
+		cs.trailer("Groundsill-Guid", guid)
 		cs.event = Event{Op: "delete", GUID: guid, Kind: string(cur.Kind), Subject: cur.Subject}
 		return cs, nil
 	})
@@ -462,8 +462,8 @@ func (f *Foundation) MoveArtifact(ctx context.Context, guid, newPath string) (*V
 			return &changeset{result: view}, nil
 		}
 		cs := &changeset{subject: fmt.Sprintf("%s %s moved from %s to %s", kindName(cur.Kind), label(cur.Artifact), folderName(cur.Loc.Folder), folderName(folder))}
-		cs.trailer("Origoa-Op", "move")
-		cs.trailer("Origoa-Guid", guid)
+		cs.trailer("Groundsill-Op", "move")
+		cs.trailer("Groundsill-Guid", guid)
 		cs.ops = append(cs.ops, gitx.Op{Path: cur.Loc.FilePath, Delete: true}, gitx.Op{Path: newFile, Content: cur.Bytes})
 		att, err := t.f.DB.Attachments(t.ctx, guid)
 		if err != nil {
@@ -650,9 +650,9 @@ func (f *Foundation) MoveFolder(ctx context.Context, from, to string) (int, erro
 			return nil, err
 		}
 		cs := &changeset{subject: fmt.Sprintf("Folder %s moved to %s (%d files)", from, to, len(moving))}
-		cs.trailer("Origoa-Op", "move-folder")
-		cs.trailer("Origoa-Path", from)
-		cs.trailer("Origoa-Path-New", to)
+		cs.trailer("Groundsill-Op", "move-folder")
+		cs.trailer("Groundsill-Path", from)
+		cs.trailer("Groundsill-Path-New", to)
 		for _, e := range moving {
 			cs.ops = append(cs.ops, gitx.Op{Path: e.Path, Delete: true}, gitx.Op{Path: rewrite(e.Path), Content: blobs[e.SHA]})
 		}
@@ -710,7 +710,7 @@ func (f *Foundation) RelocateMetadata(ctx context.Context) (int, error) {
 			return &changeset{result: 0}, nil
 		}
 		cs := &changeset{subject: fmt.Sprintf("Metadata locality restored (%d files)", len(ops)/2), ops: ops, result: len(ops) / 2}
-		cs.trailer("Origoa-Op", "relocate-metadata")
+		cs.trailer("Groundsill-Op", "relocate-metadata")
 		cs.event = Event{Op: "relocate-metadata"}
 		return cs, nil
 	})

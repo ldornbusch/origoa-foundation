@@ -9,10 +9,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/thomdehoog/origoa/internal/gitx"
-	"github.com/thomdehoog/origoa/internal/model"
-	"github.com/thomdehoog/origoa/internal/ojson"
-	"github.com/thomdehoog/origoa/internal/scanner"
+	"github.com/thomdehoog/groundsill/internal/gitx"
+	"github.com/thomdehoog/groundsill/internal/model"
+	"github.com/thomdehoog/groundsill/internal/ojson"
+	"github.com/thomdehoog/groundsill/internal/scanner"
 )
 
 const batchSize = 200
