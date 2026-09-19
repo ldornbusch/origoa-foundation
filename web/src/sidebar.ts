@@ -13,11 +13,18 @@ const FILTER_FROM = 15; // children of the current folder before a filter box ap
 
 interface Node { info: FolderInfo; children: Node[] | null; open: boolean; pending?: boolean }
 
+/** The tree counts everything below a folder; the tooltip says how much of it is in the folder itself. */
+export function countTitle(f: FolderInfo): string {
+  const below = f.artifacts - f.direct;
+  const n = (k: number) => `${k} artifact${k === 1 ? "" : "s"}`;
+  return below > 0 ? `${n(f.direct)} here, ${n(below)} in subfolders` : `${n(f.direct)} here`;
+}
+
 @customElement("groundsill-sidebar")
 export class Sidebar extends LitElement {
   private unsub?: () => void;
   private s!: State;
-  @state() private root: Node = { info: { name: "Repository", path: "", artifacts: 0, hasConfig: false }, children: null, open: true };
+  @state() private root: Node = { info: { name: "Repository", path: "", artifacts: 0, direct: 0, hasConfig: false }, children: null, open: true };
   @state() private types: Schema[] = [];
   @state() private counts: Record<string, number> = {};
   @state() private q = "";
@@ -71,7 +78,7 @@ export class Sidebar extends LitElement {
     const seq = ++this.rootSeq;
     const parts = folder.split("/").filter(Boolean);
     const name = parts[parts.length - 1] ?? "Repository";
-    const root: Node = { info: { name, path: folder, artifacts: 0, hasConfig: false }, children: null, open: true };
+    const root: Node = { info: { name, path: folder, artifacts: 0, direct: 0, hasConfig: false }, children: null, open: true };
     if (this.root.info.path !== folder) { this.root = root; this.filter = ""; } // show the new place at once
     const [parent] = await Promise.all([
       parts.length ? api.tree(parts.slice(0, -1).join("/"), false, 1).catch(() => null) : null,
@@ -133,7 +140,7 @@ export class Sidebar extends LitElement {
         <span class="caret ${hasKids ? "" : "empty"}" @click=${(e: Event) => { e.stopPropagation(); this.toggle(n); }}>${n.open ? "▾" : "▸"}</span>
         <span class="name">${depth === 0 ? html`<b>${n.info.name}</b>` : n.info.name}</span>
         ${n.info.hasConfig ? html`<span class="badge" title="has a .groundsill metadata directory">.groundsill</span>` : nothing}
-        ${n.info.artifacts ? html`<span class="count">${n.info.artifacts}</span>` : nothing}
+        ${n.info.artifacts ? html`<span class="count" title=${countTitle(n.info)}>${n.info.artifacts}</span>` : nothing}
       </div>
       ${n.open && n.children?.length ? html`<ul>
         ${depth === 0 && n.children.length > FILTER_FROM ? html`<li><input class="tree-filter" type="search" data-test="folder-filter" placeholder="Filter ${n.children.length} folders…"

@@ -213,6 +213,7 @@ type FolderInfo struct {
 	Name      string `json:"name"`
 	Path      string `json:"path"`
 	Artifacts int    `json:"artifacts"` // entries + documents anywhere below
+	Direct    int    `json:"direct"`    // entries + documents in the folder itself
 	HasConfig bool   `json:"hasConfig"` // owns a metadata directory
 }
 
@@ -224,14 +225,15 @@ func (p *DB) Folders(ctx context.Context, folder string) ([]FolderInfo, error) {
 		depth = strings.Count(folder, "/") + 1
 	}
 	rows, err := p.sql.QueryContext(ctx, `
-		SELECT child, sum(n)::int, bool_or(cfg) FROM (
-			SELECT split_part(folder, '/', $2) AS child, count(*) AS n, false AS cfg
+		SELECT child, sum(n)::int, sum(d)::int, bool_or(cfg) FROM (
+			SELECT split_part(folder, '/', $2) AS child, count(*) AS n,
+			       count(*) FILTER (WHERE nlevel(path) = $3 + 1) AS d, false AS cfg
 			  FROM artifacts WHERE path <@ $1::ltree AND nlevel(path) > $3 AND kind IN ('entry','document') GROUP BY 1
 			UNION ALL
-			SELECT split_part(scope, '/', $2), 0, true
+			SELECT split_part(scope, '/', $2), 0, 0, true
 			  FROM config_files WHERE scope_path <@ $1::ltree AND nlevel(scope_path) > $3
 			UNION ALL
-			SELECT split_part(folder, '/', $2), 0, true
+			SELECT split_part(folder, '/', $2), 0, 0, true
 			  FROM artifacts WHERE path <@ $1::ltree AND nlevel(path) > $3 AND kind IN ('link','comment')
 		) c WHERE child <> '' GROUP BY child ORDER BY lower(child)`, PathOf(folder), depth+1, depth)
 	if err != nil {
@@ -241,7 +243,7 @@ func (p *DB) Folders(ctx context.Context, folder string) ([]FolderInfo, error) {
 	var out []FolderInfo
 	for rows.Next() {
 		var f FolderInfo
-		if err := rows.Scan(&f.Name, &f.Artifacts, &f.HasConfig); err != nil {
+		if err := rows.Scan(&f.Name, &f.Artifacts, &f.Direct, &f.HasConfig); err != nil {
 			return nil, unavailable(err)
 		}
 		f.Path = f.Name

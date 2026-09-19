@@ -33,7 +33,7 @@ export class FolderField extends LitElement {
   @property() ignore = "";
   @state() private segments: Segment[] = [];
   @state() private browsing = false;
-  @state() private root: Node = { info: { name: "Repository", path: "", artifacts: 0, hasConfig: false }, children: null, open: true };
+  @state() private root: Node = { info: { name: "Repository", path: "", artifacts: 0, direct: 0, hasConfig: false }, children: null, open: true };
   private cache = new Map<string, Promise<FolderInfo[]>>();
   private timer = 0;
   private seq = 0;

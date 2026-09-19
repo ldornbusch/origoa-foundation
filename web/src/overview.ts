@@ -15,6 +15,7 @@ export class Overview extends LitElement {
   private s!: State;
   @state() private rows: Summary[] = [];
   @state() private total = 0;
+  @state() private below = 0; // artifacts including subfolders, when the view shows the folder itself
   @state() private loading = false;
   @state() private error = "";
   @state() private schemas: Record<string, Schema> = {};
@@ -50,9 +51,15 @@ export class Overview extends LitElement {
         q: r.q, path: r.folder, subtree: r.subtree || !!r.q || !!r.type, type: r.type,
         kind: r.kind || "entry,document", limit: 500, sort: r.q ? "" : "path",
       };
-      const [res, types] = await Promise.all([api.search(params), api.types(r.folder)]);
+      const direct = !params.subtree;
+      const [res, types, deep] = await Promise.all([
+        api.search(params), api.types(r.folder),
+        // the tree counts subfolders; say so here when the two numbers differ
+        direct ? api.search({ ...params, subtree: true, limit: 1 }).catch(() => null) : null,
+      ]);
       this.rows = res.artifacts;
       this.total = res.total;
+      this.below = deep ? deep.total : res.total;
       const map: Record<string, Schema> = {};
       for (const t of types.types) map[t.type] = t;
       this.schemas = map;
@@ -110,7 +117,8 @@ export class Overview extends LitElement {
           ${this.menu ? this.newMenu() : nothing}
         </div>
         <span class="title">${this.context()}</span>
-        <span class="hint">${this.loading ? "loading…" : `${this.total} artifact${this.total === 1 ? "" : "s"}`}${r.subtree || r.q || r.type ? " incl. subfolders" : ""}</span>
+        <span class="hint">${this.loading ? "loading…" : html`${this.total} artifact${this.total === 1 ? "" : "s"}${r.subtree || r.q || r.type ? " incl. subfolders"
+          : this.below > this.total ? html` here, <a href="#" data-test="show-subtree" @click=${(e: Event) => { e.preventDefault(); navigate({ subtree: true }); }}>${this.below} incl. subfolders</a>` : ""}`}</span>
         <span class="grow"></span>
         <div class="chips">
           ${[["", "Entries + Docs"], ["entry", "Entries"], ["document", "Documents"], ["link", "Links"], ["comment", "Comments"]].map(([k, name]) => html`

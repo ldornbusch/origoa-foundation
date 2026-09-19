@@ -121,7 +121,7 @@ export interface LogEntry {
   trailers?: Record<string, string>;
 }
 
-export interface FolderInfo { name: string; path: string; artifacts: number; hasConfig: boolean }
+export interface FolderInfo { name: string; path: string; artifacts: number; direct: number; hasConfig: boolean }
 export interface Tree { folder: string; folders: FolderInfo[]; artifacts: Summary[]; total: number }
 
 export interface ProjectionStatus {

@@ -150,8 +150,12 @@ func TestSyncReplayAndRebuildAgree(t *testing.T) {
 	if len(folders) != 2 || folders[0].Name != "archive" || folders[1].Name != "specs" || !folders[1].HasConfig || folders[1].Artifacts != 1 {
 		t.Fatalf("folders %+v", folders)
 	}
+	// "specs" holds its one artifact in specs/a: nothing directly, one below
+	if folders[1].Direct != 0 {
+		t.Fatalf("direct count of specs: %+v", folders[1])
+	}
 	sub, _ := p.Folders(ctx, "specs")
-	if len(sub) != 1 || sub[0].Path != "specs/a" {
+	if len(sub) != 1 || sub[0].Path != "specs/a" || sub[0].Artifacts != 1 || sub[0].Direct != 1 {
 		t.Fatalf("subfolders %+v", sub)
 	}
 	scope, _ := p.NearestScope(ctx, "specs/a/deep")
