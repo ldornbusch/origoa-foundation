@@ -15,6 +15,8 @@ import "./toast";
 // Application shell (design guide §7.2): header, navigation sidebar, and
 // the main workspace with the artifact overview above the detail view.
 
+const DEFAULT_SPLIT = 38, MIN_SPLIT = 12, MAX_SPLIT = 85;
+
 @customElement("groundsill-app")
 export class App extends LitElement {
   private unsub?: () => void;
@@ -22,6 +24,7 @@ export class App extends LitElement {
   @state() private selectedKind: string | null = null;
   private lastGuid: string | null = null;
   private statusTimer = 0;
+  @state() private split = Number(localStorage.getItem("groundsill.split")) || DEFAULT_SPLIT; // overview height, % of the main area
 
   override createRenderRoot() { return this; }
   override connectedCallback() {
@@ -62,6 +65,37 @@ export class App extends LitElement {
     this.statusTimer = window.setInterval(tick, 15000);
   }
 
+  private setSplit(pct: number, persist = true) {
+    this.split = Math.min(MAX_SPLIT, Math.max(MIN_SPLIT, pct));
+    if (persist) localStorage.setItem("groundsill.split", String(Math.round(this.split)));
+  }
+
+  // The divider between the overview and the selected artifact: drag, arrow
+  // keys, or double-click to restore the default.
+  private dragSplit = (e: PointerEvent) => {
+    const bar = e.currentTarget as HTMLElement;
+    const box = bar.parentElement!.getBoundingClientRect();
+    bar.setPointerCapture(e.pointerId);
+    bar.classList.add("dragging");
+    const move = (m: PointerEvent) => this.setSplit((100 * (m.clientY - box.top)) / box.height, false);
+    const up = () => {
+      bar.classList.remove("dragging");
+      bar.removeEventListener("pointermove", move);
+      this.setSplit(this.split);
+    };
+    bar.addEventListener("pointermove", move);
+    bar.addEventListener("pointerup", up, { once: true });
+    bar.addEventListener("pointercancel", up, { once: true });
+    e.preventDefault();
+  };
+
+  private keySplit = (e: KeyboardEvent) => {
+    const step = e.key === "ArrowUp" ? -4 : e.key === "ArrowDown" ? 4 : 0;
+    if (!step) return;
+    e.preventDefault();
+    this.setSplit(this.split + step);
+  };
+
   private setName = () => {
     store.prompt("Your name", { text: "Shown to others while you view or edit an artifact.", value: this.s.user, confirmLabel: "Save" })
       .then((n) => { if (n !== null && n.trim()) { store.setUser(n.trim()); announceName(n.trim()); } });
@@ -87,8 +121,11 @@ export class App extends LitElement {
       </header>
       <groundsill-sidebar></groundsill-sidebar>
       <div class="nav-scrim" @click=${() => store.toggleNav()}></div>
-      <div class="main ${mainClass}">
+      <div class="main ${mainClass}" style=${`--split:${this.split}%`}>
         <groundsill-overview></groundsill-overview>
+        <div class="splitter" data-test="splitter" role="separator" aria-orientation="horizontal" tabindex="0" title="Drag to resize; double-click to reset"
+          aria-valuemin=${MIN_SPLIT} aria-valuemax=${MAX_SPLIT} aria-valuenow=${Math.round(this.split)}
+          @pointerdown=${this.dragSplit} @keydown=${this.keySplit} @dblclick=${() => this.setSplit(DEFAULT_SPLIT)}></div>
         ${route.guid ? (this.selectedKind === "document" ? html`<groundsill-document .guid=${route.guid}></groundsill-document>` : html`<groundsill-detail .guid=${route.guid}></groundsill-detail>`)
           : html`<div class="empty-state" style="display:grid;place-items:center"><div><div class="big">Select an artifact</div>Pick a row above, search with <kbd>/</kbd>, or create one with <kbd>n</kbd>.</div></div>`}
       </div>

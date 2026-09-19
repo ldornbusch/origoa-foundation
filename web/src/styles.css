@@ -71,11 +71,16 @@ groundsill-app { display: block; height: 100%; }
 .dot.warn { background: var(--warn); }
 .dot.bad { background: var(--danger); }
 groundsill-sidebar, .nav-scrim { grid-column: 1; }
-.main { grid-column: 2; display: grid; grid-template-rows: minmax(160px, 38%) minmax(0, 1fr); min-height: 0; min-width: 0; }
-.main.expanded { grid-template-rows: 0 1fr; }
+.main { grid-column: 2; display: grid; grid-template-rows: minmax(120px, var(--split, 38%)) 7px minmax(0, 1fr); min-height: 0; min-width: 0; }
+.main.expanded { grid-template-rows: 1fr; }
 .main.expanded groundsill-overview { display: none; }
 .main.document { grid-template-rows: 1fr; }
 .main.document groundsill-overview { display: none; }
+.main.expanded .splitter, .main.document .splitter { display: none; }
+.splitter { cursor: row-resize; touch-action: none; background: var(--panel-2); border-bottom: 1px solid var(--border); position: relative; }
+.splitter::after { content: ""; position: absolute; left: 50%; top: 2px; width: 36px; height: 2px; margin-left: -18px; border-radius: 2px; background: var(--border); }
+.splitter:hover, .splitter.dragging, .splitter:focus-visible { background: var(--accent-soft); outline: none; }
+.splitter:hover::after, .splitter.dragging::after, .splitter:focus-visible::after { background: var(--accent); }
 
 /* ---- sidebar ---- */
 groundsill-sidebar { display: flex; flex-direction: column; min-height: 0; min-width: 0; background: var(--panel); border-right: 1px solid var(--border); }
