@@ -296,3 +296,8 @@ kbd { font: 11px var(--mono); border: 1px solid var(--border); border-bottom-wid
 .folder-typo { margin-top: 4px; padding: 6px 10px; border-radius: 8px; background: var(--warn-soft); color: var(--warn); }
 .folder-browser { border: 1px solid var(--border); border-radius: 8px; padding: 6px; max-height: 220px; overflow: auto; }
 .tree .row.pending .name { font-style: italic; color: var(--muted); }
+
+/* navigation rooted at the current folder */
+.tree .row.up { color: var(--muted); }
+.tree .row.up .caret { font-size: 12px; }
+.tree-filter { width: 100%; margin: 2px 0 4px; padding: 3px 8px; font-size: 12.5px; }

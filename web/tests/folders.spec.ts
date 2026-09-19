@@ -82,3 +82,35 @@ test("moving a folder uses the folder field and does not flag the rename as a ty
   await input.press("Enter");
   await expect(page.locator(".toolbar .title")).toHaveText("moveme2");
 });
+
+test("the navigation is rooted at the current folder, with an up row and a filter for wide levels", async ({ page }) => {
+  const wide = `${folder}/wide`;
+  for (let i = 0; i < 17; i++) await post("/entries", { path: `${wide}/part-${String(i).padStart(2, "0")}/sub`, type: "req", title: `W${i} ${id}`, fields: { priority: "low" } });
+  await page.goto(`/folder/${folder}`);
+  const rows = page.locator("groundsill-sidebar ul.tree").first().locator(".row");
+  await expect(rows.first()).toHaveAttribute("data-folder", folder);
+  await expect(page.locator("[data-test=nav-up]")).toHaveText(/Repository/);
+  await expect(page.locator("[data-test=folder-filter]")).toHaveCount(0);
+
+  // clicking a folder makes it the top of the tree; siblings and ancestors are gone
+  await page.locator(`.tree .row[data-folder="${wide}"]`).click();
+  await expect(rows.first()).toHaveAttribute("data-folder", wide);
+  await expect(page.locator(`.tree .row[data-folder="${folder}/specs"]`)).toHaveCount(0);
+  await expect(page.locator(`.tree .row[data-folder^="${wide}/part-"]`)).toHaveCount(17);
+
+  // the filter narrows a wide level
+  await page.locator("[data-test=folder-filter]").fill("part-1");
+  await expect(page.locator(`.tree .row[data-folder^="${wide}/part-"]`)).toHaveCount(7);
+
+  // a caret expands in place without navigating
+  await page.locator(`.tree .row[data-folder="${wide}/part-12"] .caret`).click();
+  await expect(page.locator(`.tree .row[data-folder="${wide}/part-12/sub"]`)).toBeVisible();
+  await expect(page.locator(".toolbar .title")).toHaveText("wide");
+
+  // up returns to the parent, which becomes the top again
+  await page.locator("[data-test=nav-up]").click();
+  await expect(rows.first()).toHaveAttribute("data-folder", folder);
+  await expect(page.locator(`.tree .row[data-folder="${folder}/specs"]`)).toBeVisible();
+  await page.locator("[data-test=nav-up]").click();
+  await expect(page.locator("[data-test=nav-up]")).toHaveCount(0);
+});
