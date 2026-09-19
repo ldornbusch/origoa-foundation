@@ -10,6 +10,7 @@
 [![Frontend](https://img.shields.io/badge/Frontend-Lit%20%2B%20TypeScript-324FFF?logo=lit&logoColor=white)](web/)
 [![Projection](https://img.shields.io/badge/Projection-PostgreSQL-4169E1?logo=postgresql&logoColor=white)](docs/INSTALL.md)
 [![Source of truth](https://img.shields.io/badge/Source%20of%20truth-Git-F05032?logo=git&logoColor=white)](#how-it-works)
+[![License](https://img.shields.io/badge/License-Apache%202.0-D22128?logo=apache&logoColor=white)](LICENSE)
 
 <img src="docs/screenshot.png" alt="Groundsill web client: folder and type navigation, the artifact overview with HIDs and workflow states, and a schema-generated detail view" width="900">
 
@@ -195,3 +196,7 @@ verified on every run rather than assumed.
 | [docs/INSTALL.md](docs/INSTALL.md) | Install, run, define a domain, deploy |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Source tour and how a request flows |
 | [DESIGN_NOTES.md](DESIGN_NOTES.md) | Design guide vs. implementation: adopted, adapted, deferred, and what testing found |
+
+## License
+
+Groundsill is released under the [Apache License 2.0](LICENSE).
