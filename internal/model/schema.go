@@ -1,0 +1,347 @@
+package model
+
+import (
+	"encoding/json"
+	"fmt"
+	"sort"
+)
+
+// Cardinality of a link type (design guide §4.8).
+type Cardinality string
+
+const (
+	OneToOne   Cardinality = "one-to-one"
+	OneToMany  Cardinality = "one-to-many"
+	ManyToOne  Cardinality = "many-to-one"
+	ManyToMany Cardinality = "many-to-many"
+)
+
+// HIDConfig drives automatic HID generation for a type.
+type HIDConfig struct {
+	Prefix    string `json:"prefix"`
+	Separator string `json:"separator,omitempty"` // default "-"
+	Digits    int    `json:"digits,omitempty"`    // zero padding, 0 = none
+}
+
+// Schema is one schema definition file, or the effective (composed) schema
+// of an artifact type at a location. Any native kind can be typed: entry and
+// document types describe folder artifacts, link types describe
+// relationships (with endpoint constraints and cardinality), comment types
+// describe annotations.
+type Schema struct {
+	Type         string         `json:"type"`
+	Kind         Kind           `json:"kind"`
+	Inheritance  string         `json:"inheritance,omitempty"` // "off" severs composition
+	DisplayName  string         `json:"displayName,omitempty"`
+	Description  string         `json:"description,omitempty"`
+	HID          *HIDConfig     `json:"hid,omitempty"`
+	Fields       []Field        `json:"fields,omitempty"`
+	Workflows    []string       `json:"workflows,omitempty"`
+	SourceTypes  []string       `json:"sourceTypes,omitempty"` // links: allowed source types ("*" = any)
+	TargetTypes  []string       `json:"targetTypes,omitempty"` // links: allowed target types
+	Cardinality  Cardinality    `json:"cardinality,omitempty"` // links
+	Presentation map[string]any `json:"presentation,omitempty"`
+	Extra        map[string]any `json:"-"` // unknown top-level properties, passed through
+
+	// Sources lists the scopes whose definitions were composed (effective schemas only).
+	Sources []string `json:"sources,omitempty"`
+}
+
+// knownSchemaKeys are consumed by the typed struct; everything else is kept in Extra.
+var knownSchemaKeys = map[string]bool{"type": true, "kind": true, "inheritance": true, "displayName": true,
+	"description": true, "hid": true, "fields": true, "workflows": true, "sourceTypes": true,
+	"targetTypes": true, "cardinality": true, "presentation": true, "sources": true}
+
+// ParseSchema decodes and validates a schema definition file.
+func ParseSchema(data []byte) (*Schema, error) {
+	var s Schema
+	if err := json.Unmarshal(data, &s); err != nil {
+		return nil, Invalid("schema is not valid JSON: %v", err)
+	}
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err == nil {
+		for k, v := range raw {
+			if !knownSchemaKeys[k] {
+				if s.Extra == nil {
+					s.Extra = map[string]any{}
+				}
+				var any_ any
+				_ = json.Unmarshal(v, &any_)
+				s.Extra[k] = any_
+			}
+		}
+	}
+	if err := s.Validate(); err != nil {
+		return nil, err
+	}
+	return &s, nil
+}
+
+// MarshalJSON emits the schema with pass-through properties.
+func (s *Schema) MarshalJSON() ([]byte, error) {
+	type alias Schema
+	b, err := json.Marshal((*alias)(s))
+	if err != nil || len(s.Extra) == 0 {
+		return b, err
+	}
+	var m map[string]any
+	_ = json.Unmarshal(b, &m)
+	for k, v := range s.Extra {
+		if _, taken := m[k]; !taken {
+			m[k] = v
+		}
+	}
+	return json.Marshal(m)
+}
+
+// Validate checks a single definition.
+func (s *Schema) Validate() error {
+	if err := ValidateTypeID(s.Type); err != nil {
+		return fmt.Errorf("schema type: %w", err)
+	}
+	if s.Kind == "" {
+		s.Kind = KindEntry
+	}
+	if _, err := ParseKind(string(s.Kind)); err != nil {
+		return err
+	}
+	if s.Inheritance != "" && s.Inheritance != "off" && s.Inheritance != "on" {
+		return Invalid("inheritance must be \"on\" or \"off\"")
+	}
+	seen := map[string]bool{}
+	for i := range s.Fields {
+		if err := s.Fields[i].ValidateDefinition(); err != nil {
+			return err
+		}
+		if seen[s.Fields[i].ID] {
+			return Invalid("duplicate field id %q", s.Fields[i].ID)
+		}
+		seen[s.Fields[i].ID] = true
+	}
+	for _, w := range s.Workflows {
+		if err := ValidateTypeID(w); err != nil {
+			return fmt.Errorf("workflow reference: %w", err)
+		}
+	}
+	switch s.Cardinality {
+	case "", OneToOne, OneToMany, ManyToOne, ManyToMany:
+	default:
+		return Invalid("unknown cardinality %q", s.Cardinality)
+	}
+	if s.HID != nil && s.HID.Prefix == "" {
+		return Invalid("hid.prefix must not be empty")
+	}
+	if s.HID != nil {
+		if err := ValidateHID(s.HID.Prefix + "1"); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// Field returns the definition of a field id.
+func (s *Schema) Field(id string) *Field {
+	for i := range s.Fields {
+		if s.Fields[i].ID == id {
+			return &s.Fields[i]
+		}
+	}
+	return nil
+}
+
+// AllWorkflows returns workflow ids from both the workflows list and
+// workflow-typed fields, in a stable order.
+func (s *Schema) AllWorkflows() []string {
+	set := map[string]bool{}
+	var out []string
+	add := func(id string) {
+		if id != "" && !set[id] {
+			set[id] = true
+			out = append(out, id)
+		}
+	}
+	for _, w := range s.Workflows {
+		add(w)
+	}
+	for _, f := range s.Fields {
+		if f.Type == FieldWorkflow {
+			add(f.Workflow)
+		}
+	}
+	return out
+}
+
+// AllowsEndpoint reports whether a link schema accepts a source/target type.
+func AllowsEndpoint(allowed []string, typ string) bool {
+	if len(allowed) == 0 {
+		return true
+	}
+	for _, a := range allowed {
+		if a == "*" || a == typ {
+			return true
+		}
+	}
+	return false
+}
+
+// ScopedSchema is a definition together with the folder that owns it.
+type ScopedSchema struct {
+	Scope  string
+	Schema *Schema
+}
+
+// Compose builds the effective schema for a type from the definitions found
+// along the lineage root → folder (design guide §4.3–§4.4): every matching
+// definition contributes; the nearer definition wins per property; fields
+// and relationships merge by id with complete replacement; a definition
+// with inheritance "off" discards everything above it. defs must be ordered
+// root first. Returns nil when no definition matches.
+func Compose(defs []ScopedSchema) *Schema {
+	if len(defs) == 0 {
+		return nil
+	}
+	start := 0
+	for i := range defs {
+		if defs[i].Schema.Inheritance == "off" {
+			start = i
+		}
+	}
+	defs = defs[start:]
+	eff := &Schema{Type: defs[0].Schema.Type, Kind: defs[0].Schema.Kind}
+	for _, d := range defs {
+		s := d.Schema
+		eff.Sources = append(eff.Sources, d.Scope)
+		if s.Kind != "" {
+			eff.Kind = s.Kind
+		}
+		if s.DisplayName != "" {
+			eff.DisplayName = s.DisplayName
+		}
+		if s.Description != "" {
+			eff.Description = s.Description
+		}
+		if s.HID != nil {
+			h := *s.HID
+			eff.HID = &h
+		}
+		for _, f := range s.Fields {
+			replaced := false
+			for i := range eff.Fields {
+				if eff.Fields[i].ID == f.ID {
+					eff.Fields[i] = f
+					replaced = true
+					break
+				}
+			}
+			if !replaced {
+				eff.Fields = append(eff.Fields, f)
+			}
+		}
+		for _, w := range s.Workflows {
+			found := false
+			for _, e := range eff.Workflows {
+				if e == w {
+					found = true
+				}
+			}
+			if !found {
+				eff.Workflows = append(eff.Workflows, w)
+			}
+		}
+		if s.SourceTypes != nil {
+			eff.SourceTypes = append([]string(nil), s.SourceTypes...)
+		}
+		if s.TargetTypes != nil {
+			eff.TargetTypes = append([]string(nil), s.TargetTypes...)
+		}
+		if s.Cardinality != "" {
+			eff.Cardinality = s.Cardinality
+		}
+		if len(s.Presentation) > 0 {
+			if eff.Presentation == nil {
+				eff.Presentation = map[string]any{}
+			}
+			for k, v := range s.Presentation {
+				eff.Presentation[k] = v
+			}
+		}
+		for k, v := range s.Extra {
+			if eff.Extra == nil {
+				eff.Extra = map[string]any{}
+			}
+			eff.Extra[k] = v
+		}
+	}
+	if eff.DisplayName == "" {
+		eff.DisplayName = eff.Type
+	}
+	return eff
+}
+
+// SchemaIndex is an in-memory view of all schema definitions in a
+// repository, keyed by scope, used to resolve effective schemas.
+type SchemaIndex struct {
+	byScope map[string][]*Schema // scope -> definitions in that scope
+}
+
+// NewSchemaIndex builds an index from (scope, schema) pairs.
+func NewSchemaIndex(defs []ScopedSchema) *SchemaIndex {
+	idx := &SchemaIndex{byScope: map[string][]*Schema{}}
+	for _, d := range defs {
+		idx.byScope[d.Scope] = append(idx.byScope[d.Scope], d.Schema)
+	}
+	return idx
+}
+
+// Effective resolves the effective schema of typ for an artifact in folder.
+func (idx *SchemaIndex) Effective(typ, folder string) *Schema {
+	var chain []ScopedSchema
+	for _, scope := range Lineage(folder) {
+		for _, s := range idx.byScope[scope] {
+			if s.Type == typ {
+				chain = append(chain, ScopedSchema{Scope: scope, Schema: s})
+			}
+		}
+	}
+	return Compose(chain)
+}
+
+// TypesVisible lists the effective schemas of every type that has at least
+// one definition visible from folder, sorted by type id.
+func (idx *SchemaIndex) TypesVisible(folder string) []*Schema {
+	set := map[string]bool{}
+	for _, scope := range Lineage(folder) {
+		for _, s := range idx.byScope[scope] {
+			set[s.Type] = true
+		}
+	}
+	types := make([]string, 0, len(set))
+	for t := range set {
+		types = append(types, t)
+	}
+	sort.Strings(types)
+	out := make([]*Schema, 0, len(types))
+	for _, t := range types {
+		if e := idx.Effective(t, folder); e != nil {
+			out = append(out, e)
+		}
+	}
+	return out
+}
+
+// LinkTypesFor lists link schemas visible from folder that allow the given
+// artifact type as source or target.
+func (idx *SchemaIndex) LinkTypesFor(typ, folder string) (asSource, asTarget []*Schema) {
+	for _, s := range idx.TypesVisible(folder) {
+		if s.Kind != KindLink {
+			continue
+		}
+		if AllowsEndpoint(s.SourceTypes, typ) {
+			asSource = append(asSource, s)
+		}
+		if AllowsEndpoint(s.TargetTypes, typ) {
+			asTarget = append(asTarget, s)
+		}
+	}
+	return
+}
