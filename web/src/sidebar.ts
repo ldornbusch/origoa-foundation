@@ -119,7 +119,7 @@ export class Sidebar extends LitElement {
     const selected = r.folder === n.info.path && !r.type;
     const hasKids = n.children === null || n.children.length > 0;
     return html`<li>
-      <div class="row ${selected ? "selected" : ""}" data-folder=${n.info.path} @click=${() => navigate({ folder: n.info.path, guid: null, type: "", q: "" })}>
+      <div class="row ${selected ? "selected" : ""}" data-folder=${n.info.path} @click=${() => { navigate({ folder: n.info.path, guid: null, type: "", q: "" }); store.closeNavIfOverlay(); }}>
         <span class="caret ${hasKids ? "" : "empty"}" @click=${(e: Event) => { e.stopPropagation(); this.toggle(n); }}>${n.open ? "▾" : "▸"}</span>
         <span class="name">${depth === 0 ? html`<b>${n.info.name}</b>` : n.info.name}</span>
         ${n.info.hasConfig ? html`<span class="badge" title="has a .groundsill metadata directory">.groundsill</span>` : nothing}
@@ -150,7 +150,7 @@ export class Sidebar extends LitElement {
           <ul class="tree">${(["entry", "document"] as const).filter((k) => groups[k]?.length).map((k) => html`<li>
             <div class="row"><span class="caret">▾</span><span class="name muted">${kindPlural[k]}</span></div>
             <ul>${groups[k].map((t) => html`<li><div class="row ${r.type === t.type ? "selected" : ""}" data-type=${t.type}
-              @click=${() => navigate({ type: t.type, kind: k, guid: null, subtree: true })}>
+              @click=${() => { navigate({ type: t.type, kind: k, guid: null, subtree: true }); store.closeNavIfOverlay(); }}>
               <span class="caret empty">·</span><span class="name">${displayName(t, t.type)}</span>
               ${this.counts[t.type] ? html`<span class="count">${this.counts[t.type]}</span>` : nothing}</div></li>`)}</ul></li>`)}</ul></div>
       </div>`;

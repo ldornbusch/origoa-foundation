@@ -39,7 +39,10 @@ func (p *DB) rebuildLocked(ctx context.Context, reason string) (err error) {
 	defer func() {
 		if err != nil {
 			p.setStatus(func(s *Status) { s.LastError = err.Error() })
+			return
 		}
+		done := time.Now().UTC()
+		p.setStatus(func(s *Status) { s.LastRebuild = &done })
 	}()
 
 	head, err := p.repo.Head(ctx)
@@ -348,6 +351,9 @@ func (p *DB) phaseHistory(ctx context.Context, head string) error {
 		curPath[g] = path
 	}
 	rows.Close()
+	if err := rows.Err(); err != nil {
+		return unavailable(err)
+	}
 
 	type stamp struct {
 		t time.Time

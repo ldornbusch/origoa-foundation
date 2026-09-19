@@ -90,7 +90,8 @@ make build                      # web/dist + bin/groundsilld
 ./examples/seed.sh              # a demo requirements domain
 ```
 
-Open <http://127.0.0.1:8080>. Full instructions, including deployment notes, are in
+Open <http://127.0.0.1:8080>. Or with containers: `docker compose up --build`. Full instructions,
+including deployment notes, health probes and the systemd unit, are in
 [docs/INSTALL.md](docs/INSTALL.md).
 
 ## The client
@@ -126,6 +127,7 @@ GET  PUT  DELETE /api/artifacts/{guid}/files/{name}                          att
 Service APIs:
 
 ```
+GET  /api/health                          liveness/readiness: 200 while the database answers, 503 otherwise; version, sessions
 GET  /api/repository                      head, projection status, statistics, scanner config
 GET  /api/repository/tree?path=&subtree=  folders and artifacts
 GET  /api/repository/search?q=&kind=&type=&path=&subtree=&hid=&field.<id>=&state.<wf>=&sort=&limit=&offset=
@@ -145,12 +147,13 @@ WS   /api/ws                              session service: commits, status, pres
 
 Errors are JSON `{"error": …, "status": …}`: 400 validation, 404, 409 conflict (duplicate HID,
 cardinality, contention), 412 stale `If-Match`, 503 maintenance mode or projection unavailable
-(reads fail closed). Bodies are capped at 4 MiB (attachments 32 MiB).
+(reads fail closed), 504 when a request exceeds its deadline. Bodies are capped at 4 MiB
+(attachments 32 MiB). WebSocket sessions are same-origin only unless origins are allowed explicitly.
 
 ## Repository layout
 
 ```
-cmd/groundsilld           server binary (flags: -repo -branch -db -addr -web -watch)
+cmd/groundsilld       server binary: flags, security headers, access log, health probe, graceful shutdown
 internal/gitx         bare-repository plumbing: CAS commits, batched reads, first-parent history walks
 internal/ojson        order-preserving, format-preserving JSON
 internal/model        kinds, GUIDs/HIDs, folder rules, field types, schema composition, workflows, overlays, content
@@ -166,9 +169,10 @@ web/                  Lit + TypeScript client and Playwright tests
 ```sh
 export GROUNDSILL_TEST_DSN=postgres://postgres:postgres@127.0.0.1:5432/groundsill_test?sslmode=disable
 make test        # go vet, gofmt gate, all packages with -race (PostgreSQL-backed tests skip without the DSN)
+make lint        # golangci-lint (errcheck, staticcheck, govet, unused, ...); CI runs it too
 make fuzz        # fuzz smoke: JSON codec fixed point, folder validation envelope, scanner classification
 make e2e         # REST end-to-end script against a temporary server
-make test-ui     # Playwright browser suites (needs the groundsill_e2e database): the + New flow, every field type through the
+make test-ui     # Playwright smoke suite; make test-ui-all runs every browser suite (needs the groundsill_e2e database): the + New flow, every field type through the
                  # generated form, attachments, the block editor, workflows, relationships, overlays, HID renames, moves,
                  # search and deep links, keyboard shortcuts, responsive and dark mode, reindex, two users in separate
                  # contexts (presence, live updates, conflicts), plus adversarial cases (script-looking content,

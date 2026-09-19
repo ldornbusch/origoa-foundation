@@ -242,7 +242,7 @@ export class DocumentView extends LitElement {
     const handle = html`<div class="handle" contenteditable="false">
       <button title="Move up" @click=${() => this.moveBlock(b.id!, -1)}>▲</button><button title="Move down" @click=${() => this.moveBlock(b.id!, 1)}>▼</button>
       <button title="Indent into previous section (Tab)" @click=${() => this.indent(b.id!)}>→</button><button title="Outdent (Shift+Tab)" @click=${() => this.outdent(b.id!)}>←</button>
-      <button title="Delete block" @click=${() => this.removeBlock(b.id!)}>✕</button></div>`;
+      <button type="button" title="Delete block" aria-label="Delete block" @click=${() => this.removeBlock(b.id!)}>✕</button></div>`;
     // The text is bound with live() so re-renders never rewrite (and thus
     // never move the caret in) a block the user is typing into.
     const editable = (cls: string, key: "title" | "text", placeholder: string) => html`<div class="block ${cls}" contenteditable="plaintext-only" data-placeholder=${placeholder} spellcheck="true"
@@ -296,7 +296,7 @@ export class DocumentView extends LitElement {
     return html`
       <div class="doc-main">
         <div class="doc-toolbar">
-          <button class="btn sm icon" title="Back to overview" @click=${() => navigate({ guid: null, sidebars: [] })}>✕</button>
+          <button class="btn sm icon" title="Back to overview" aria-label="Back to overview" @click=${() => navigate({ guid: null, sidebars: [] })}>✕</button>
           ${v.meta.hid ? html`<span class="hid">${v.meta.hid}</span>` : nothing}
           <span class="muted small">${this.schema?.displayName ?? v.meta.type} · ${v.meta.folder || "/"}</span>
           ${others.length ? html`<span class="presence">✎ ${others.join(", ")} editing</span>` : nothing}
@@ -306,7 +306,7 @@ export class DocumentView extends LitElement {
           <button class="btn sm" data-test="insert-entry" @click=${() => this.insertEntry(after)}>＋ Entry reference</button>
           <button class="btn sm" @click=${() => this.insertAfter(after, { type: "list", items: [{ id: blockId(), type: "paragraph", text: "" }] })}>＋ List</button>
           <button class="btn sm" @click=${() => this.insertAfter(after, { type: "code", text: "" })}>＋ Code</button>
-          <button class="btn sm" @click=${() => { const src = prompt("Image URL or attachment name:"); if (src) this.insertAfter(after, { type: "image", src, alt: "" }); }}>＋ Image</button>
+          <button class="btn sm" @click=${() => store.prompt("Insert image", { text: "An attachment name of this document or an image URL.", placeholder: "diagram.png or https://…", confirmLabel: "Insert" }).then((src) => { if (src?.trim()) this.insertAfter(after, { type: "image", src: src.trim(), alt: "" }); })}>＋ Image</button>
           <span class="grow"></span>
           ${SIDEBARS.map(([id, name]) => html`<button class="chip ${r.sidebars.includes(id) ? "on" : ""}" data-test=${"sb-" + id}
             @click=${() => navigate({ sidebars: r.sidebars.includes(id) ? r.sidebars.filter((x) => x !== id) : [...r.sidebars, id] }, true)}>${name}</button>`)}

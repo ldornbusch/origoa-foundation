@@ -1,4 +1,4 @@
-import { test, expect, post, get, seedDomain, stamp, api } from "./fixtures";
+import { answerPrompt, api, expect, get, post, seedDomain, stamp, test } from "./fixtures";
 
 // Workflows, relationships, overlays, HID renames, moves and folder moves.
 
@@ -50,8 +50,8 @@ test("relationships: typed links both ways, removal, free-form type, and endpoin
   await expect(rel.locator(".link-row")).toHaveCount(1);
   await expect(rel.locator(".link-row .arrow")).toHaveText("←");
   // free-form "related" link via the prompt
-  page.once("dialog", (d) => d.accept("related"));
   await rel.locator(".actions button", { hasText: "other" }).click();
+  await answerPrompt(page, "related");
   await page.locator("groundsill-picker input").fill(`Req B ${id}`);
   await page.locator(".picker-results .row", { hasText: `Req B ${id}` }).click();
   await expect(rel.locator(".link-row")).toHaveCount(2);
@@ -66,9 +66,8 @@ test("relationships: typed links both ways, removal, free-form type, and endpoin
   await expect(page.locator("table.grid tbody tr", { hasText: `Req B ${id}` }).locator(".social")).toContainText("⇄ 0");
   // endpoint rule violation surfaces as a toast, not a silent failure
   await page.goto(`/artifact/${t1.meta.guid}`);
-  await page.locator("#sec-relationships .actions button", { hasText: "other" }).click({ trial: true });
-  page.once("dialog", (d) => d.accept("verifies"));
   await page.locator("#sec-relationships .actions button", { hasText: "other" }).click();
+  await answerPrompt(page, "verifies");
   await page.locator("groundsill-picker input").fill(`Test A ${id}`); // a test case as target of verifies is not allowed
   await expect(page.locator(".picker-results")).toContainText("No matching"); // itself is excluded
   await page.locator("groundsill-picker input").fill(`Req A ${id}`);
@@ -126,8 +125,8 @@ test("HID rename keeps history and lookup; move keeps identity", async ({ page }
   await page.locator("[data-test=save]").click();
   await expect(page.locator(".notice.error")).toContainText("already used");
   // move through the prompt: folder tree and breadcrumbs follow, identity stays
-  page.once("dialog", (d) => d.accept(`${folder}/moved`));
   await page.locator(".detail-head button", { hasText: "Move" }).click();
+  await answerPrompt(page, `${folder}/moved`);
   await expect(page.locator(".toast.success")).toContainText("Moved");
   await expect(page.locator("#sec-general")).toContainText(`${folder}/moved`);
   await expect(page.locator(".tree .row[data-folder='" + folder + "/moved']")).toBeVisible();
@@ -138,8 +137,8 @@ test("HID rename keeps history and lookup; move keeps identity", async ({ page }
 test("folder move from the toolbar relocates the subtree", async ({ page }) => {
   await post("/entries", { path: `${folder}/old/deep`, type: "req", title: `Deep one ${id}`, fields: { priority: "low" } });
   await page.goto(`/folder/${folder}/old`);
-  page.once("dialog", (d) => d.accept(`${folder}/new`));
   await page.locator("[data-test=move-folder]").click();
+  await answerPrompt(page, `${folder}/new`);
   await expect(page.locator(".toast.success")).toContainText("Moved");
   await expect(page).toHaveURL(new RegExp(`/folder/${folder}/new`));
   await expect(page.locator(".tree .row[data-folder='" + folder + "/new/deep']")).toBeVisible();

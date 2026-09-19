@@ -4,7 +4,7 @@ A guided tour of the repository: what each package does and how a request flows 
 Layers only depend downward.
 
 ```
-cmd/groundsilld              wiring: flags, HTTP server, graceful shutdown
+cmd/groundsilld              wiring: flags, HTTP server, response headers, access log, graceful shutdown
   └─ internal/httpapi      REST + WebSocket: decoding, ETag/If-Match, status codes, presence hub
        └─ internal/foundation   the service: operations, the §10.1 transaction, service views
             ├─ internal/projection   PostgreSQL projection (sync, replay, reindex, queries, validation)

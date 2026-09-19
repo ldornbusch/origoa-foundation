@@ -20,8 +20,15 @@ export interface Toast { id: number; text: string; level: "info" | "error" | "su
 export interface Presence { viewers: string[]; editors: string[] }
 
 export interface Dialog {
-  kind: "new" | "pick" | "confirm" | "config";
+  kind: "new" | "pick" | "confirm" | "prompt" | "config";
   [k: string]: unknown;
+}
+
+export interface PromptOptions {
+  text?: string;
+  value?: string;
+  placeholder?: string;
+  confirmLabel?: string;
 }
 
 export interface State {
@@ -60,7 +67,7 @@ class Store {
     dialog: null,
     picker: null,
     refreshTick: 0,
-    navCollapsed: localStorage.getItem("groundsill.nav") === "collapsed",
+    navCollapsed: (localStorage.getItem("groundsill.nav") ?? (narrowScreen() ? "collapsed" : "open")) === "collapsed",
   };
   private listeners = new Set<Listener>();
   private toastSeq = 0;
@@ -90,6 +97,13 @@ class Store {
     this.set({ toasts: this.state.toasts.filter((t) => t.id !== id) });
   }
 
+  /** Asks the user for one line of text; resolves null when cancelled. */
+  prompt(title: string, opts: PromptOptions = {}): Promise<string | null> {
+    return new Promise((resolve) => {
+      this.set({ dialog: { kind: "prompt", title, ...opts, onSubmit: (v: string) => resolve(v), onCancel: () => resolve(null) } });
+    });
+  }
+
   refresh() {
     this.set({ refreshTick: this.state.refreshTick + 1 });
   }
@@ -104,6 +118,15 @@ class Store {
     localStorage.setItem("groundsill.nav", c ? "collapsed" : "open");
     this.set({ navCollapsed: c });
   }
+
+  /** On narrow screens the navigation is an overlay: close it after a choice. */
+  closeNavIfOverlay() {
+    if (narrowScreen() && !this.state.navCollapsed) this.set({ navCollapsed: true });
+  }
+}
+
+function narrowScreen(): boolean {
+  return typeof window !== "undefined" && window.matchMedia("(max-width: 900px)").matches;
 }
 
 export const store = new Store();

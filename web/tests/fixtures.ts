@@ -35,6 +35,15 @@ export async function del(path: string) {
   if (!res.ok && res.status !== 404) throw new Error(`DELETE ${path}: ${res.status}`);
 }
 
+/** Answers the in-app prompt dialog (store.prompt) with a value. */
+export async function answerPrompt(page: import("@playwright/test").Page, value: string) {
+  const input = page.locator(".dialog input[data-test=prompt]");
+  await input.waitFor();
+  await input.fill(value);
+  await input.press("Enter");
+  await page.locator(".dialog.prompt").waitFor({ state: "detached" });
+}
+
 export function stamp(): string {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
 }

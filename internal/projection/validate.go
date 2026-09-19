@@ -36,6 +36,9 @@ func (p *DB) Validate(ctx context.Context) ([]Issue, error) {
 		add("error", "invalid-artifact", g, path, e)
 	}
 	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, unavailable(err)
+	}
 
 	fileIssues, err := p.FileIssues(ctx)
 	if err != nil {
@@ -53,6 +56,9 @@ func (p *DB) Validate(ctx context.Context) ([]Issue, error) {
 		add("error", "invalid-config", "", path, e)
 	}
 	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, unavailable(err)
+	}
 
 	rows, err = p.sql.QueryContext(ctx, `SELECT hid, count(*), array_to_string(array_agg(guid), ',') FROM artifacts WHERE hid IS NOT NULL GROUP BY hid HAVING count(*) > 1`)
 	if err != nil {
@@ -65,6 +71,9 @@ func (p *DB) Validate(ctx context.Context) ([]Issue, error) {
 		add("error", "duplicate-hid", "", "", "HID "+hid+" is used by "+guids)
 	}
 	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, unavailable(err)
+	}
 
 	// dangling references
 	for _, q := range []struct{ col, code, kind string }{
@@ -82,6 +91,9 @@ func (p *DB) Validate(ctx context.Context) ([]Issue, error) {
 			add("error", q.code, g, path, q.col+" "+ref+" does not exist")
 		}
 		rows.Close()
+		if err := rows.Err(); err != nil {
+			return nil, unavailable(err)
+		}
 	}
 
 	// overlay cycles
@@ -96,6 +108,9 @@ func (p *DB) Validate(ctx context.Context) ([]Issue, error) {
 		bases[g] = b
 	}
 	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, unavailable(err)
+	}
 	reported := map[string]bool{}
 	for g := range bases {
 		seen := map[string]bool{}
@@ -140,6 +155,9 @@ func (p *DB) Validate(ctx context.Context) ([]Issue, error) {
 		}
 	}
 	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, unavailable(err)
+	}
 
 	// workflow consistency
 	schemas, workflows, err := p.Config(ctx)
@@ -172,6 +190,9 @@ func (p *DB) Validate(ctx context.Context) ([]Issue, error) {
 		}
 	}
 	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, unavailable(err)
+	}
 
 	sort.SliceStable(issues, func(i, j int) bool {
 		if issues[i].Severity != issues[j].Severity {

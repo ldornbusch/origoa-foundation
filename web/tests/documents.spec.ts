@@ -1,4 +1,4 @@
-import { test, expect, post, get, seedDomain, stamp, api } from "./fixtures";
+import { answerPrompt, api, expect, get, post, seedDomain, stamp, test } from "./fixtures";
 
 // The document editor: block operations, keyboard behaviour, nesting,
 // entry cards, images from attachments, sidebars, conflicts, versions.
@@ -113,8 +113,8 @@ test("title edit, entry cards, images from attachments and the entry sidebar", a
   await expect(page.locator(".doc-side")).toContainText(`Card target ${id}`);
   await expect(page.locator(".doc-side")).toContainText("effort");
   // image from an attachment name
-  page.once("dialog", (dlg) => dlg.accept("pixel.png"));
   await page.locator(".doc-toolbar button", { hasText: "Image" }).click();
+  await answerPrompt(page, "pixel.png");
   const img = page.locator(".doc-page img.doc-image");
   await expect(img).toHaveAttribute("src", /files\/pixel\.png/);
   expect(await img.evaluate((i: HTMLImageElement) => i.complete && i.naturalWidth)).toBe(1);

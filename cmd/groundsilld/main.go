@@ -21,16 +21,26 @@ import (
 	"github.com/thomdehoog/groundsill/internal/httpapi"
 )
 
+// version is set at build time: go build -ldflags "-X main.version=1.2.3".
+var version = "dev"
+
 func main() {
 	var (
-		repo   = flag.String("repo", envOr("GROUNDSILL_REPO", "data/groundsill.git"), "path of the bare Git repository (created if missing)")
-		branch = flag.String("branch", envOr("GROUNDSILL_BRANCH", "main"), "branch the Foundation owns")
-		dsn    = flag.String("db", os.Getenv("GROUNDSILL_DB"), "PostgreSQL connection string (required), e.g. postgres://user:pass@localhost/groundsill?sslmode=disable")
-		addr   = flag.String("addr", envOr("GROUNDSILL_ADDR", "127.0.0.1:8080"), "listen address")
-		web    = flag.String("web", envOr("GROUNDSILL_WEB", "web/dist"), "directory with the built web client (empty to disable)")
-		watch  = flag.Duration("watch", 3*time.Second, "how often to check for direct Git pushes")
+		repo      = flag.String("repo", envOr("GROUNDSILL_REPO", "data/groundsill.git"), "path of the bare Git repository (created if missing)")
+		branch    = flag.String("branch", envOr("GROUNDSILL_BRANCH", "main"), "branch the Foundation owns")
+		dsn       = flag.String("db", os.Getenv("GROUNDSILL_DB"), "PostgreSQL connection string (required), e.g. postgres://user:pass@localhost/groundsill?sslmode=disable")
+		addr      = flag.String("addr", envOr("GROUNDSILL_ADDR", "127.0.0.1:8080"), "listen address")
+		web       = flag.String("web", envOr("GROUNDSILL_WEB", "web/dist"), "directory with the built web client (empty to disable)")
+		watch     = flag.Duration("watch", envDuration("GROUNDSILL_WATCH", 3*time.Second), "how often to check for direct Git pushes (0 disables)")
+		origins   = flag.String("allow-origin", os.Getenv("GROUNDSILL_ALLOW_ORIGIN"), "comma-separated extra origins allowed to open WebSocket sessions (same-origin is always allowed)")
+		accessLog = flag.Bool("access-log", os.Getenv("GROUNDSILL_ACCESS_LOG") == "1", "log every HTTP request")
+		showVer   = flag.Bool("version", false, "print the version and exit")
 	)
 	flag.Parse()
+	if *showVer {
+		fmt.Println("groundsilld", version)
+		return
+	}
 	if *dsn == "" {
 		fmt.Fprintln(os.Stderr, "groundsilld: -db (or GROUNDSILL_DB) is required: the PostgreSQL projection database")
 		os.Exit(2)
@@ -42,12 +52,24 @@ func main() {
 	if err != nil {
 		log.Fatalf("groundsilld: %v", err)
 	}
-	defer f.Close()
+	defer func() {
+		if err := f.Close(); err != nil {
+			log.Printf("groundsilld: close: %v", err)
+		}
+	}()
 	if *watch > 0 {
 		go f.Watch(ctx, *watch)
 	}
 
 	api := httpapi.New(f)
+	api.Version = version
+	if *origins != "" {
+		for _, o := range strings.Split(*origins, ",") {
+			if o = strings.TrimSpace(o); o != "" {
+				api.Hub.OriginPatterns = append(api.Hub.OriginPatterns, o)
+			}
+		}
+	}
 	mux := http.NewServeMux()
 	mux.Handle("/api/", api)
 	if *web != "" {
@@ -61,23 +83,34 @@ func main() {
 			})
 		}
 	}
+	handler := secureHeaders(mux)
+	if *accessLog {
+		handler = logRequests(handler)
+	}
 	srv := &http.Server{
 		Addr:              *addr,
-		Handler:           mux,
+		Handler:           handler,
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       60 * time.Second,
 		IdleTimeout:       120 * time.Second,
 	}
+	done := make(chan struct{})
 	go func() {
+		defer close(done)
 		<-ctx.Done()
+		log.Printf("groundsilld: shutting down")
 		shutdown, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
-		_ = srv.Shutdown(shutdown)
+		if err := srv.Shutdown(shutdown); err != nil {
+			log.Printf("groundsilld: shutdown: %v", err)
+		}
+		api.Hub.Close()
 	}()
-	log.Printf("groundsilld: repository %s (branch %s), listening on http://%s", *repo, *branch, *addr)
+	log.Printf("groundsilld %s: repository %s (branch %s), listening on http://%s", version, *repo, *branch, *addr)
 	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Fatalf("groundsilld: %v", err)
 	}
+	<-done
 }
 
 func envOr(key, def string) string {
@@ -85,6 +118,72 @@ func envOr(key, def string) string {
 		return v
 	}
 	return def
+}
+
+func envDuration(key string, def time.Duration) time.Duration {
+	v := os.Getenv(key)
+	if v == "" {
+		return def
+	}
+	d, err := time.ParseDuration(v)
+	if err != nil {
+		log.Fatalf("groundsilld: %s: %v", key, err)
+	}
+	return d
+}
+
+// secureHeaders adds the response headers every deployment should send.
+// The content security policy only covers the web client's own documents;
+// API responses are JSON and attachments carry their own policy.
+func secureHeaders(next http.Handler) http.Handler {
+	const csp = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; " +
+		"connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		h := w.Header()
+		h.Set("X-Content-Type-Options", "nosniff")
+		h.Set("X-Frame-Options", "DENY")
+		h.Set("Referrer-Policy", "same-origin")
+		if !strings.HasPrefix(r.URL.Path, "/api/") {
+			h.Set("Content-Security-Policy", csp)
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// logRequests writes one line per request: method, path, status, size, time.
+func logRequests(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
+		next.ServeHTTP(rec, r)
+		log.Printf("%s %s %d %dB %s %s", r.Method, r.URL.RequestURI(), rec.status, rec.bytes, time.Since(start).Round(time.Millisecond), clientIP(r))
+	})
+}
+
+type statusRecorder struct {
+	http.ResponseWriter
+	status int
+	bytes  int
+}
+
+func (s *statusRecorder) WriteHeader(code int) { s.status = code; s.ResponseWriter.WriteHeader(code) }
+func (s *statusRecorder) Write(b []byte) (int, error) {
+	n, err := s.ResponseWriter.Write(b)
+	s.bytes += n
+	return n, err
+}
+
+// Unwrap lets http.ResponseController reach Hijack/Flush for WebSockets.
+func (s *statusRecorder) Unwrap() http.ResponseWriter { return s.ResponseWriter }
+
+func clientIP(r *http.Request) string {
+	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+		if i := strings.IndexByte(xff, ','); i >= 0 {
+			return strings.TrimSpace(xff[:i])
+		}
+		return strings.TrimSpace(xff)
+	}
+	return r.RemoteAddr
 }
 
 // spa serves static files and falls back to index.html for client routes.

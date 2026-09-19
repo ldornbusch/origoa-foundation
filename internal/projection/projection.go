@@ -15,7 +15,7 @@ import (
 	"sync"
 	"time"
 
-	_ "github.com/lib/pq" // PostgreSQL driver
+	"github.com/lib/pq" // PostgreSQL driver
 
 	"github.com/thomdehoog/groundsill/internal/gitx"
 	"github.com/thomdehoog/groundsill/internal/model"
@@ -56,6 +56,7 @@ type Status struct {
 	Progress      int          `json:"progress"`
 	Total         int          `json:"total"`
 	StartedAt     *time.Time   `json:"startedAt,omitempty"`
+	LastRebuild   *time.Time   `json:"lastRebuild,omitempty"` // when the last full rebuild completed
 	LastError     string       `json:"lastError,omitempty"`
 	Capabilities  Capabilities `json:"capabilities"`
 }
@@ -66,6 +67,9 @@ type Capabilities struct {
 	Query  bool `json:"query"`  // metadata/field queries (after phase 2)
 	Search bool `json:"search"` // full-text search (after phase 3)
 }
+
+// Ping checks that the projection database is reachable.
+func (d *DB) Ping(ctx context.Context) error { return d.sql.PingContext(ctx) }
 
 // Open connects to PostgreSQL, creates the tables if needed and loads the
 // scanner configuration from the repository head.
@@ -239,6 +243,16 @@ func (p *DB) AdvanceProcessed(ctx context.Context, tx *sql.Tx, from, to string) 
 func unavailable(err error) error {
 	if err == nil {
 		return nil
+	}
+	// Keep the cause visible to errors.Is: a cancelled request must be
+	// reported as such, not as an outage. PostgreSQL reports a statement
+	// cancelled through the context as SQLSTATE 57014 (query_canceled).
+	var pqErr *pq.Error
+	if errors.As(err, &pqErr) && pqErr.Code == "57014" {
+		return fmt.Errorf("%w: projection: %w (%v)", model.ErrUnavailable, context.Canceled, err)
+	}
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return fmt.Errorf("%w: projection: %w", model.ErrUnavailable, err)
 	}
 	return fmt.Errorf("%w: projection: %v", model.ErrUnavailable, err)
 }

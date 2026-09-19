@@ -197,6 +197,29 @@ users in separate browser contexts) added these:
     two compare-and-swaps.
 26. A test-harness lesson recorded as a rule: two servers with different repositories must never
     share one projection database; `make e2e` and `make test-ui` use their own.
+27. **Production pass.** Native browser `prompt()` dialogs are replaced by an in-app prompt;
+    icon-only buttons carry accessible names; on phone widths the navigation is an overlay that
+    starts closed and closes after a choice (the main area was previously placed in the collapsed,
+    zero-width column). Server side: `GET /api/health` for probes, a build-time version, security
+    headers and a content security policy for the client, a sandboxed policy for attachments,
+    same-origin WebSocket sessions (plus an explicit allow-list), an optional access log, shutdown
+    that closes sessions, cancelled requests recognized even when the killed git subprocess hides
+    the cancellation, and golangci-lint in CI. Packaging: a multi-stage `Dockerfile`, a
+    `docker-compose.yml` with PostgreSQL, and an image job in CI.
+28. **A client that gave up could poison the schema cache for everyone.** The shared
+    configuration cache was filled by a query bound to the requesting client's context; when that
+    client navigated away mid-query, the iteration ended early, the error went unchecked, and the
+    truncated (often empty) schema set was cached until the next commit: artifacts rendered as
+    "no schema" and validation stopped. The cache is now filled without the caller's
+    cancellation, a truncated result is never cached, and every row iteration in the projection
+    checks its error (enforced by the `rowserrcheck` linter). Found by the browser suite on its
+    third consecutive run against one server, which is why the suite is now pinned to one worker
+    and the reindex test waits for the rebuild to finish.
+29. **Writes queued behind a rebuild.** Synchronization waited on the rebuild's lock, so a save
+    issued during a reindex hung for the rebuild's whole duration. It now reports maintenance
+    mode at once (503 with `Retry-After`), and the client retries for up to a minute while the
+    header shows the rebuild's progress. The status reports `lastRebuild` so operators and tests
+    can tell when a rebuild completed.
 
 ## 5. Remaining gaps
 
@@ -208,3 +231,7 @@ users in separate browser contexts) added these:
 4. The `searchable` flag and presentation metadata beyond `columns`, `icon` and `color` are stored
    and returned but not interpreted by the generic client.
 5. Rich text is stored as plain text; no inline formatting yet.
+6. Writes are serialized per process (one Git commit at a time, about ten per second here), so a
+   burst of a hundred creates from one client delays another client's single save by seconds. A
+   batch endpoint that commits many artifacts at once would remove that; the transaction already
+   supports multi-file changesets.

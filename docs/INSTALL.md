@@ -54,12 +54,16 @@ go build -o bin/groundsilld ./cmd/groundsilld
 | `-db` / `GROUNDSILL_DB` | *(required)* | PostgreSQL connection string |
 | `-addr` / `GROUNDSILL_ADDR` | `127.0.0.1:8080` | listen address |
 | `-web` / `GROUNDSILL_WEB` | `web/dist` | directory with the built client; `""` for API only |
-| `-watch` | `3s` | how often to check for direct Git pushes and resynchronize |
+| `-watch` / `GROUNDSILL_WATCH` | `3s` | how often to check for direct Git pushes and resynchronize; `0` disables |
+| `-allow-origin` / `GROUNDSILL_ALLOW_ORIGIN` | *(none)* | extra origins (host patterns such as `app.example.com`, `*.example.com`) allowed to open WebSocket sessions; same-origin is always allowed |
+| `-access-log` / `GROUNDSILL_ACCESS_LOG=1` | off | one log line per HTTP request (method, path, status, size, duration, client) |
+| `-version` | | print the build version and exit |
 
 Check it is alive:
 
 ```sh
-curl -s http://127.0.0.1:8080/api/repository
+curl -s http://127.0.0.1:8080/api/health       # {"status":"ok","database":true,...}; 503 when the database is down
+curl -s http://127.0.0.1:8080/api/repository   # head, projection state, statistics
 ```
 
 Populate a demo domain and open <http://127.0.0.1:8080>:
@@ -148,12 +152,33 @@ restructuring is restored with `POST /api/repository/maintenance/relocate-metada
 ## 7. Deployment notes
 
 - **Authentication and TLS are not included** (outside the MVP scope of the design guide). Put an
-  authenticating reverse proxy in front; do not expose the port directly.
+  authenticating reverse proxy in front; do not expose the port directly. The proxy must pass
+  WebSocket upgrades for `/api/ws` and keep the `Host` header (or list the public origin with
+  `-allow-origin`), since sessions are refused for foreign origins.
+- **Health probes**: `GET /api/health` answers 200 while the projection database is reachable and
+  503 otherwise; it reports the version, maintenance mode and the number of live sessions. Use it
+  for load-balancer and container health checks.
+- **Response headers**: every response carries `X-Content-Type-Options`, `X-Frame-Options` and
+  `Referrer-Policy`; the web client is served with a content security policy that only allows its
+  own scripts, and attachments are served under a sandboxed policy so an uploaded HTML file cannot
+  act as the application.
+- **Shutdown**: `SIGTERM` or `SIGINT` stops accepting requests, waits up to 10 seconds for in-flight
+  ones, closes WebSocket sessions with "going away" and exits. A write that was already published to
+  Git is never lost: the projection replays it on the next start.
 - **Back up the bare repository**: `git clone --mirror data/groundsill.git` is a complete backup. The
   database is derived.
 - **Several server processes** may share one repository and one database; writes are protected by
   the Git compare-and-swap and the database `processed_hash` CAS, and maintenance mode is
   advertised through the database.
+- **Containers**: the `Dockerfile` builds the client and the server into one image that runs as an
+  unprivileged user, keeps the repository under `/data` and has a health check on `/api/health`.
+  `docker-compose.yml` starts it together with PostgreSQL:
+
+  ```sh
+  docker compose up --build          # http://127.0.0.1:8080
+  GROUNDSILL_VERSION=1.0.0 make docker   # or just the image, tagged groundsill:1.0.0
+  ```
+
 - A minimal systemd unit:
 
   ```ini

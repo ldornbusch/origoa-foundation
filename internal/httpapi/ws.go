@@ -21,9 +21,14 @@ import (
 // lightweight presence (who is viewing or editing which artifact) so
 // clients can warn before conflicting edits. It never carries CRUD.
 type Hub struct {
-	f       *foundation.Foundation
-	mu      sync.Mutex
-	clients map[*client]struct{}
+	f *foundation.Foundation
+	// OriginPatterns lists additional origins (host patterns such as
+	// "app.example.com" or "*.example.com") allowed to open a session.
+	// Same-origin requests are always accepted; nothing else is by default.
+	OriginPatterns []string
+	mu             sync.Mutex
+	clients        map[*client]struct{}
+	closed         bool
 }
 
 type client struct {
@@ -96,9 +101,31 @@ func (h *Hub) Clients() int {
 	return len(h.clients)
 }
 
+// Close ends every session and refuses new ones; used at shutdown, since
+// hijacked WebSocket connections are outside http.Server.Shutdown.
+func (h *Hub) Close() {
+	h.mu.Lock()
+	h.closed = true
+	clients := make([]*client, 0, len(h.clients))
+	for c := range h.clients {
+		clients = append(clients, c)
+	}
+	h.mu.Unlock()
+	for _, c := range clients {
+		_ = c.conn.Close(websocket.StatusGoingAway, "server shutting down")
+	}
+}
+
 // Serve upgrades the connection and runs the session.
 func (h *Hub) Serve(w http.ResponseWriter, r *http.Request) {
-	conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{OriginPatterns: []string{"*"}})
+	h.mu.Lock()
+	closed := h.closed
+	h.mu.Unlock()
+	if closed {
+		writeError(w, http.StatusServiceUnavailable, "server shutting down")
+		return
+	}
+	conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{OriginPatterns: h.OriginPatterns})
 	if err != nil {
 		return
 	}
@@ -114,7 +141,7 @@ func (h *Hub) Serve(w http.ResponseWriter, r *http.Request) {
 		h.mu.Unlock()
 		h.announce(c.viewing)
 		h.announce(c.editing)
-		conn.Close(websocket.StatusNormalClosure, "bye")
+		_ = conn.Close(websocket.StatusNormalClosure, "bye")
 	}()
 
 	hello, _ := json.Marshal(map[string]any{"type": "hello", "session": c.id, "name": c.name, "status": h.f.DB.Status(), "at": model.Now()})

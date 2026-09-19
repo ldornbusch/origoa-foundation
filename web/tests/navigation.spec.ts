@@ -1,4 +1,4 @@
-import { test, expect, post, seedDomain, stamp, api } from "./fixtures";
+import { answerPrompt, api, expect, get, post, seedDomain, stamp, test } from "./fixtures";
 
 // Navigation and shell behaviour: keyboard shortcuts, breadcrumbs,
 // history navigation, deep links, filters, kind chips, columns, sorting,
@@ -121,12 +121,26 @@ test("navigation collapse persists; responsive layout; dark mode", async ({ page
   await page.goto(`/folder/${folder}/alpha`);
   await page.setViewportSize({ width: 800, height: 900 });
   await expect(page.locator("groundsill-sidebar")).toBeVisible(); // overlays the content on small screens
-  await page.locator("header button[title='Toggle navigation']").click(); // collapse the overlay
+  await page.locator(".nav-scrim").click({ position: { x: 700, y: 400 } }); // tapping beside the overlay closes it
   await expect(page.locator("groundsill-sidebar")).toBeHidden();
   await page.locator("table.grid tbody tr").first().click();
   await expect(page.locator("groundsill-detail h2")).toBeVisible();
   const overflow = await page.evaluate(() => document.querySelector(".shell")!.scrollWidth - document.querySelector(".shell")!.clientWidth);
   expect(overflow).toBe(0);
+  // a first visit on a phone starts with the navigation closed; choosing a folder closes it again
+  const phone = await browser.newContext({ viewport: { width: 420, height: 860 } });
+  const small = await phone.newPage();
+  await small.goto(`/folder/${folder}?subtree=1`);
+  await expect(small.locator("groundsill-sidebar")).toBeHidden();
+  await expect(small.locator("table.grid tbody tr").first()).toBeVisible();
+  await small.locator("header button[title='Toggle navigation']").click();
+  await expect(small.locator("groundsill-sidebar")).toBeVisible();
+  await small.locator(`.tree .row[data-folder='${folder}/alpha']`).click();
+  await expect(small.locator("groundsill-sidebar")).toBeHidden();
+  await expect(small).toHaveURL(new RegExp(`/folder/${folder}/alpha`));
+  await small.locator("table.grid tbody tr").first().click();
+  await expect(small.locator("groundsill-detail h2")).toBeVisible();
+  await phone.close();
   // dark mode renders with dark background and readable text
   const ctx = await browser.newContext({ colorScheme: "dark", viewport: { width: 1200, height: 800 } });
   const dark = await ctx.newPage();
@@ -142,13 +156,16 @@ test("navigation collapse persists; responsive layout; dark mode", async ({ page
 test("status indicator, user name and reindex", async ({ page }) => {
   await page.goto(`/folder/${folder}`);
   await expect(page.locator("header .status")).toContainText("in sync", { timeout: 20000 });
-  page.once("dialog", (d) => d.accept("Zoë"));
   await page.locator("header button[title='Set your name']").click();
+  await answerPrompt(page, "Zoë");
   await expect(page.locator("header button[title='Set your name']")).toHaveText("Zoë");
   await page.reload();
   await expect(page.locator("header button[title='Set your name']")).toHaveText("Zoë");
+  const before = (await get<{ projection: { lastRebuild?: string } }>("/repository")).projection.lastRebuild ?? "";
   await page.locator("header button", { hasText: "Reindex" }).click();
   await expect(page.locator(".toast", { hasText: "Reindex started" })).toBeVisible();
+  // wait for the rebuild itself to finish, not just for the header to look calm
+  await expect.poll(async () => (await get<{ projection: { lastRebuild?: string } }>("/repository")).projection.lastRebuild ?? "", { timeout: 60000 }).not.toBe(before);
   await expect(page.locator("header .status")).toContainText("in sync", { timeout: 20000 });
   await expect(page.locator("table.grid tbody tr, .empty-state").first()).toBeVisible();
   // a large folder still lists and filters quickly

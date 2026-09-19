@@ -62,10 +62,10 @@ export class App extends LitElement {
     this.statusTimer = window.setInterval(tick, 15000);
   }
 
-  private setName() {
-    const n = prompt("Your name (shown to others while you view or edit):", this.s.user);
-    if (n !== null && n.trim()) { store.setUser(n.trim()); announceName(n.trim()); }
-  }
+  private setName = () => {
+    store.prompt("Your name", { text: "Shown to others while you view or edit an artifact.", value: this.s.user, confirmLabel: "Save" })
+      .then((n) => { if (n !== null && n.trim()) { store.setUser(n.trim()); announceName(n.trim()); } });
+  };
 
   override render() {
     if (!this.s) return nothing;
@@ -76,7 +76,7 @@ export class App extends LitElement {
     const mainClass = route.guid && this.selectedKind === "document" ? "document" : route.expanded ? "expanded" : "";
     return html`<div class="shell ${navCollapsed ? "nav-collapsed" : ""}">
       <header class="header">
-        <button class="btn sm icon" title="Toggle navigation" @click=${() => store.toggleNav()}>☰</button>
+        <button class="btn sm icon" title="Toggle navigation" aria-label="Toggle navigation" @click=${() => store.toggleNav()}>☰</button>
         <a class="brand" href="/" @click=${(e: Event) => { e.preventDefault(); navigate({ folder: "", guid: null, q: "", type: "", kind: "" }); }}><span class="logo"></span>Groundsill</a>
         <nav class="crumbs">${folderCrumbs(route.folder).map((c, i) => html`${i ? html`<span>/</span>` : nothing}<a href="#" @click=${(e: Event) => { e.preventDefault(); navigate({ folder: c.path, guid: null, type: "" }); }}>${c.name}</a>`)}</nav>
         <span class="spacer"></span>
@@ -86,6 +86,7 @@ export class App extends LitElement {
         <button class="btn sm" title="Set your name" @click=${this.setName}>${this.s.user || "anonymous"}</button>
       </header>
       <groundsill-sidebar></groundsill-sidebar>
+      <div class="nav-scrim" @click=${() => store.toggleNav()}></div>
       <div class="main ${mainClass}">
         <groundsill-overview></groundsill-overview>
         ${route.guid ? (this.selectedKind === "document" ? html`<groundsill-document .guid=${route.guid}></groundsill-document>` : html`<groundsill-detail .guid=${route.guid}></groundsill-detail>`)

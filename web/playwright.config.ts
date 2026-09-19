@@ -8,6 +8,9 @@ export default defineConfig({
   timeout: 60_000,
   expect: { timeout: 10_000 },
   retries: process.env.CI ? 1 : 0,
+  // The suites share one server whose writes are serialized on purpose; a
+  // second worker's write burst would only add noise to the first's timings.
+  workers: 1,
   reporter: process.env.CI ? [["list"], ["html", { open: "never" }]] : "list",
   use: {
     baseURL: process.env.GROUNDSILL_URL || "http://127.0.0.1:18090",

@@ -470,6 +470,9 @@ func (p *DB) FilesUnder(ctx context.Context, folder string) ([]PathEntry, error)
 		out = append(out, e)
 	}
 	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, unavailable(err)
+	}
 	rows, err = p.sql.QueryContext(ctx, `SELECT f.path, f.guid FROM artifact_files f JOIN artifacts a ON a.guid = f.guid WHERE a.path <@ $1::ltree ORDER BY f.path`, lt)
 	if err != nil {
 		return nil, unavailable(err)
@@ -484,6 +487,9 @@ func (p *DB) FilesUnder(ctx context.Context, folder string) ([]PathEntry, error)
 		out = append(out, e)
 	}
 	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, unavailable(err)
+	}
 	rows, err = p.sql.QueryContext(ctx, `SELECT path FROM config_files WHERE scope_path <@ $1::ltree ORDER BY path`, lt)
 	if err != nil {
 		return nil, unavailable(err)
@@ -498,6 +504,9 @@ func (p *DB) FilesUnder(ctx context.Context, folder string) ([]PathEntry, error)
 		out = append(out, e)
 	}
 	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, unavailable(err)
+	}
 	return out, nil
 }
 
@@ -654,6 +663,9 @@ func (p *DB) Stats(ctx context.Context) (*Stats, error) {
 		st.Types[t] += n
 	}
 	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, unavailable(err)
+	}
 	err = p.sql.QueryRowContext(ctx, `SELECT
 		(SELECT count(*) FROM artifacts WHERE NOT valid),
 		(SELECT count(*) FROM deleted_artifacts),

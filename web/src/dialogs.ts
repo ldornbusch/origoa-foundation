@@ -24,8 +24,21 @@ export class Dialogs extends LitElement {
   private onKey = (e: KeyboardEvent) => {
     if (e.key !== "Escape") return;
     if (this.s?.picker) { const c = this.s.picker.onCancel as (() => void) | undefined; store.set({ picker: null }); c?.(); }
-    else if (this.s?.dialog) store.set({ dialog: null });
+    else if (this.s?.dialog) this.dismiss();
   };
+
+  /** Closes the current dialog and tells it that nothing was chosen. */
+  private dismiss() {
+    const d = this.s?.dialog;
+    store.set({ dialog: null });
+    (d?.onCancel as (() => void) | undefined)?.();
+  }
+
+  override updated() {
+    // A freshly opened prompt gets the keyboard, with its suggestion selected.
+    const input = this.querySelector<HTMLInputElement>(".dialog input[data-test=prompt]");
+    if (input && document.activeElement !== input && !this.querySelector(".picker-layer")) { input.focus(); input.select(); }
+  }
 
   override render() {
     const d = this.s?.dialog;
@@ -34,18 +47,35 @@ export class Dialogs extends LitElement {
     switch (d?.kind) {
       case "new": body = html`<groundsill-new-dialog .dialog=${d}></groundsill-new-dialog>`; break;
       case "confirm": body = this.confirm(d); break;
+      case "prompt": body = this.prompt(d); break;
       default: body = nothing;
     }
-    return html`${d ? html`<div class="backdrop" @click=${(e: Event) => { if (e.target === e.currentTarget) store.set({ dialog: null }); }}>
-        <div class="dialog" role="dialog" aria-modal="true">${body}</div></div>` : nothing}
+    return html`${d ? html`<div class="backdrop" @click=${(e: Event) => { if (e.target === e.currentTarget) this.dismiss(); }}>
+        <div class="dialog ${d.kind === "prompt" ? "prompt" : ""}" role="dialog" aria-modal="true">${body}</div></div>` : nothing}
       ${p ? html`<div class="backdrop picker-layer" @click=${(e: Event) => { if (e.target === e.currentTarget) { const c = p.onCancel as (() => void) | undefined; store.set({ picker: null }); c?.(); } }}>
         <div class="dialog" role="dialog" aria-modal="true"><groundsill-picker .dialog=${p}></groundsill-picker></div></div>` : nothing}`;
+  }
+
+  private prompt(d: Dialog) {
+    const submit = (e: Event) => {
+      e.preventDefault();
+      const value = this.querySelector<HTMLInputElement>(".dialog input[data-test=prompt]")?.value ?? "";
+      store.set({ dialog: null });
+      (d.onSubmit as (v: string) => void)(value);
+    };
+    return html`<h2>${d.title as string}</h2>
+      ${d.text ? html`<p class="hint">${d.text as string}</p>` : nothing}
+      <form class="prompt-form" @submit=${submit}>
+        <input type="text" data-test="prompt" .value=${(d.value as string) ?? ""} placeholder=${(d.placeholder as string) ?? ""} aria-label=${d.title as string}>
+        <div class="foot"><button type="button" class="btn" @click=${() => this.dismiss()}>Cancel</button>
+        <button type="submit" class="btn primary">${(d.confirmLabel as string) ?? "OK"}</button></div>
+      </form>`;
   }
 
   private confirm(d: Dialog) {
     return html`<h2>${d.title as string}</h2>
       <p>${d.text as string}</p>
-      <div class="foot"><button class="btn" @click=${() => store.set({ dialog: null })}>Cancel</button>
+      <div class="foot"><button class="btn" @click=${() => this.dismiss()}>Cancel</button>
       <button class="btn ${(d.danger as boolean) ? "danger" : "primary"}" @click=${() => { store.set({ dialog: null }); (d.onConfirm as () => void)(); }}>${(d.confirmLabel as string) ?? "OK"}</button></div>`;
   }
 }
@@ -154,7 +184,7 @@ export class NewDialog extends LitElement {
           <div class="field"><label for="new-hid">HID</label><div class="value">
             <input id="new-hid" type="text" .value=${this.hid} placeholder=${s.hid ? `auto: ${s.hid.prefix}${s.hid.separator ?? "-"}n` : "optional, e.g. REQ-42"} @input=${(e: Event) => (this.hid = (e.target as HTMLInputElement).value)} /></div></div>
           ${kind === "entry" ? html`<div class="field"><label>Base (overlay)</label><div class="value">
-            ${this.base ? html`<span class="ref-chip">${this.baseLabel}<button type="button" @click=${() => { this.base = ""; this.baseLabel = ""; }}>✕</button></span>` : nothing}
+            ${this.base ? html`<span class="ref-chip">${this.baseLabel}<button type="button" title="Clear base artifact" aria-label="Clear base artifact" @click=${() => { this.base = ""; this.baseLabel = ""; }}>✕</button></span>` : nothing}
             <button type="button" class="btn sm" @click=${() => this.pickArtifact("base", [s.type], ["entry"])}>${this.base ? "Change…" : "＋ Inherit from an entry…"}</button>
             <div class="help">An overlay keeps only the fields you set here; everything else resolves from its base.</div></div></div>` : nothing}` : nothing}
         ${kind === "link" ? html`

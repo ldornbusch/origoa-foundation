@@ -19,11 +19,13 @@ async function request<T>(method: string, path: string, body?: unknown, headers:
     }
   }
   // Maintenance mode (reindex, large restructuring) answers 503 with
-  // Retry-After before anything was written; wait it out for a few seconds
-  // instead of failing the user's action.
+  // Retry-After before anything was written; keep retrying for up to a
+  // minute instead of failing the user's action. The header shows the
+  // rebuild's progress meanwhile.
   let res = await fetch("/api" + path, init);
-  for (let attempt = 0; res.status === 503 && res.headers.get("Retry-After") && attempt < 8; attempt++) {
-    await new Promise((r) => setTimeout(r, 750));
+  const deadline = Date.now() + 60_000;
+  for (let delay = 500; res.status === 503 && res.headers.get("Retry-After") && Date.now() < deadline; delay = Math.min(delay * 1.5, 2000)) {
+    await new Promise((r) => setTimeout(r, delay));
     res = await fetch("/api" + path, init);
   }
   if (res.status === 204) return undefined as T;

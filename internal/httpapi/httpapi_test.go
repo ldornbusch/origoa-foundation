@@ -177,6 +177,9 @@ func TestRESTLifecycle(t *testing.T) {
 	// attachments
 	a.ok("PUT", "/api/artifacts/"+g1+"/files/notes.txt", "hello world", 204)
 	f := a.ok("GET", "/api/artifacts/"+g1+"/files/notes.txt", "", 200)
+	if f.hdr.Get("Content-Security-Policy") != "default-src 'none'; sandbox" {
+		t.Fatalf("attachments must be sandboxed, got CSP %q", f.hdr.Get("Content-Security-Policy"))
+	}
 	if string(f.raw) != "hello world" {
 		t.Fatalf("attachment %q", f.raw)
 	}
@@ -336,5 +339,68 @@ func TestWebSocketSession(t *testing.T) {
 		if got["type"] != "commit" || got["op"] != "create" || got["commit"] == "" {
 			t.Fatalf("commit event %v", got)
 		}
+	}
+}
+
+func TestHealthReportsVersionAndDatabase(t *testing.T) {
+	a := newAPI(t)
+	a.s.Version = "test-build"
+	r := a.ok("GET", "/api/health", "", 200)
+	if r.body["status"] != "ok" || r.body["database"] != true || r.body["version"] != "test-build" {
+		t.Fatalf("unexpected health body: %s", r.raw)
+	}
+	if r.hdr.Get("Cache-Control") != "no-store" {
+		t.Fatalf("health must not be cached: %q", r.hdr.Get("Cache-Control"))
+	}
+}
+
+func TestWebSocketRejectsForeignOrigin(t *testing.T) {
+	a := newAPI(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	url := "ws" + strings.TrimPrefix(a.srv.URL, "http") + "/api/ws"
+	_, res, err := websocket.Dial(ctx, url, &websocket.DialOptions{HTTPHeader: http.Header{"Origin": {"https://evil.example"}}})
+	if err == nil {
+		t.Fatal("cross-origin session was accepted")
+	}
+	if res == nil || res.StatusCode != http.StatusForbidden {
+		t.Fatalf("want 403 for a foreign origin, got %v", res)
+	}
+	// Same-origin and explicitly allowed origins connect.
+	c, _, err := websocket.Dial(ctx, url, &websocket.DialOptions{HTTPHeader: http.Header{"Origin": {a.srv.URL}}})
+	if err != nil {
+		t.Fatalf("same-origin session refused: %v", err)
+	}
+	defer c.CloseNow()
+	a.s.Hub.OriginPatterns = []string{"app.example.com"}
+	c2, _, err := websocket.Dial(ctx, url, &websocket.DialOptions{HTTPHeader: http.Header{"Origin": {"https://app.example.com"}}})
+	if err != nil {
+		t.Fatalf("allowed origin refused: %v", err)
+	}
+	defer c2.CloseNow()
+}
+
+func TestHubCloseEndsSessionsAndRefusesNewOnes(t *testing.T) {
+	a := newAPI(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	url := "ws" + strings.TrimPrefix(a.srv.URL, "http") + "/api/ws"
+	c, _, err := websocket.Dial(ctx, url, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.CloseNow()
+	if _, _, err := c.Read(ctx); err != nil { // hello
+		t.Fatal(err)
+	}
+	a.s.Hub.Close()
+	if _, _, err := c.Read(ctx); err == nil {
+		t.Fatal("session survived hub close")
+	}
+	if _, _, err := websocket.Dial(ctx, url, nil); err == nil {
+		t.Fatal("new session accepted after close")
+	}
+	if n := a.s.Hub.Clients(); n != 0 {
+		t.Fatalf("clients after close: %d", n)
 	}
 }

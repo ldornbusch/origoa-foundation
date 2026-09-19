@@ -32,7 +32,9 @@ func DSN(t testing.TB) string {
 		t.Fatalf("create test schema: %v", err)
 	}
 	t.Cleanup(func() {
-		admin.Exec(`DROP SCHEMA ` + name + ` CASCADE`)
+		if _, err := admin.Exec(`DROP SCHEMA ` + name + ` CASCADE`); err != nil {
+			t.Logf("drop test schema %s: %v", name, err)
+		}
 		admin.Close()
 	})
 	sep := "?"

@@ -18,7 +18,15 @@ import (
 // the first-parent chain the missing commits are replayed sequentially,
 // each in its own transaction; otherwise a full rebuild runs.
 func (p *DB) Sync(ctx context.Context) error {
-	p.syncMu.Lock()
+	// A rebuild holds syncMu for its whole duration. Callers must not queue
+	// behind it (a request would hang for minutes on a large repository):
+	// maintenance mode is reported instead, and clients retry.
+	if !p.syncMu.TryLock() {
+		if p.Maintenance() {
+			return fmt.Errorf("%w: %s", model.ErrMaintenance, p.Status().Reason)
+		}
+		p.syncMu.Lock()
+	}
 	defer p.syncMu.Unlock()
 	// processed_hash is read before HEAD: another process may publish and
 	// advance the projection between the two reads, and then the projection
@@ -370,6 +378,9 @@ func (p *DB) deleteByPath(ctx context.Context, tx *sql.Tx, path, guid, commit st
 		victims = append(victims, g)
 	}
 	rows.Close()
+	if err := rows.Err(); err != nil {
+		return unavailable(err)
+	}
 	for _, g := range victims {
 		if g.path != path {
 			continue // the GUID lives elsewhere now (moved in an earlier commit)
@@ -414,6 +425,9 @@ func (p *DB) promoteClaimants(ctx context.Context, tx *sql.Tx, guid, commit stri
 		paths = append(paths, path)
 	}
 	rows.Close()
+	if err := rows.Err(); err != nil {
+		return unavailable(err)
+	}
 	sc := p.Scanner()
 	for _, path := range paths {
 		if removed[path] {
@@ -489,7 +503,11 @@ func (p *DB) Config(ctx context.Context) (*model.SchemaIndex, *model.WorkflowInd
 		return c.schemas, c.workflows, nil
 	}
 	p.cacheMu.Unlock()
-	rows, err := p.sql.QueryContext(ctx, `SELECT scope, category, name, data FROM config_files WHERE valid AND category IN ('schemas','workflows') ORDER BY scope, name`)
+	// The result is shared by every request; one client giving up must not
+	// abort (and thereby truncate) the query that fills it.
+	qctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+	defer cancel()
+	rows, err := p.sql.QueryContext(qctx, `SELECT scope, category, name, data FROM config_files WHERE valid AND category IN ('schemas','workflows') ORDER BY scope, name`)
 	if err != nil {
 		return nil, nil, unavailable(err)
 	}
@@ -518,6 +536,11 @@ func (p *DB) Config(ctx context.Context) (*model.SchemaIndex, *model.WorkflowInd
 			}
 			wfs[scope] = append(wfs[scope], w)
 		}
+	}
+	if err := rows.Err(); err != nil {
+		// A partial configuration must never be cached: every later request
+		// would see schemas and workflows missing.
+		return nil, nil, unavailable(err)
 	}
 	c := &configCache{hash: hash, schemas: model.NewSchemaIndex(defs), workflows: model.NewWorkflowIndex(wfs), schemaSrc: defs}
 	p.cacheMu.Lock()

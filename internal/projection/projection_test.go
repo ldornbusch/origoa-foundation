@@ -2,59 +2,31 @@ package projection
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
-	"os"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/thomdehoog/groundsill/internal/gitx"
 	"github.com/thomdehoog/groundsill/internal/model"
+	"github.com/thomdehoog/groundsill/internal/testutil"
 )
 
 // testDB opens a projection on a fresh, isolated PostgreSQL schema so tests
 // can run in parallel against one database. Requires GROUNDSILL_TEST_DSN.
 func testDB(t *testing.T) (*DB, *gitx.Repo) {
 	t.Helper()
-	dsn := os.Getenv("GROUNDSILL_TEST_DSN")
-	if dsn == "" {
-		t.Skip("GROUNDSILL_TEST_DSN not set")
-	}
+	dsn := testutil.DSN(t)
 	repo, err := gitx.Open(t.TempDir()+"/repo.git", "main")
 	if err != nil {
 		t.Fatal(err)
 	}
-	p, err := Open(context.Background(), IsolatedDSN(t, dsn), repo)
+	p, err := Open(context.Background(), dsn, repo)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { p.Close() })
 	return p, repo
-}
-
-// IsolatedDSN creates a throwaway schema and returns a DSN using it.
-func IsolatedDSN(t *testing.T, dsn string) string {
-	t.Helper()
-	name := fmt.Sprintf("t_%d_%d", time.Now().UnixNano(), os.Getpid())
-	admin, err := sql.Open("postgres", dsn)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := admin.Exec(`CREATE SCHEMA ` + name); err != nil {
-		t.Fatal(err)
-	}
-	// ltree lives in public; keep it on the search path.
-	t.Cleanup(func() {
-		admin.Exec(`DROP SCHEMA ` + name + ` CASCADE`)
-		admin.Close()
-	})
-	sep := "?"
-	if strings.Contains(dsn, "?") {
-		sep = "&"
-	}
-	return dsn + sep + "search_path=" + name + ",public"
 }
 
 func commit(t *testing.T, repo *gitx.Repo, msg string, ops ...gitx.Op) string {
@@ -309,6 +281,9 @@ func snapshot(t *testing.T, p *DB) string {
 			b.WriteString(line)
 			b.WriteByte('\n')
 		}
+		if err := rows.Err(); err != nil {
+			t.Fatal(err)
+		}
 	}
 	dump(`SELECT concat_ws('|', guid, kind, type, title, hid, folder, path::text, file_path, blob_sha, base, source, target, subject, parent, author, created, states::text, fields::text, md5(search_text), valid, error, created_commit, modified_commit) FROM artifacts ORDER BY guid`)
 	dump(`SELECT concat_ws('|', guid, field, value) FROM artifact_fields ORDER BY 1`)
@@ -318,4 +293,35 @@ func snapshot(t *testing.T, p *DB) string {
 	dump(`SELECT concat_ws('|', guid, kind, type, title, hid, last_path, deleted_commit) FROM deleted_artifacts ORDER BY 1`)
 	dump(`SELECT concat_ws('|', path, guid, message) FROM file_issues ORDER BY 1`)
 	return b.String()
+}
+
+// A request that gives up while the shared configuration is being loaded
+// must not poison the cache for everyone else: the cache is filled without
+// the caller's cancellation, and a truncated result is never cached.
+func TestConfigCacheSurvivesCancelledRequest(t *testing.T) {
+	p, repo := testDB(t)
+	ctx := context.Background()
+	commit(t, repo, "config",
+		gitx.Op{Path: ".groundsill/schemas/req.json", Content: []byte(`{"type":"req","hid":{"prefix":"R"}}`)},
+		gitx.Op{Path: ".groundsill/workflows/dev.json", Content: []byte(`{"id":"dev","initial":"open","states":["open"]}`)})
+	if err := p.Sync(ctx); err != nil {
+		t.Fatal(err)
+	}
+	cancelled, cancel := context.WithCancel(ctx)
+	cancel()
+	if schemas, _, err := p.Config(cancelled); err != nil {
+		t.Logf("cancelled config load: %v", err) // failing is fine; caching a truncated result is not
+	} else if schemas.Effective("req", "") == nil {
+		t.Fatal("cancelled config load returned an incomplete result")
+	}
+	schemas, workflows, err := p.Config(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if schemas.Effective("req", "") == nil {
+		t.Fatal("schema missing after a cancelled request: the cache was poisoned")
+	}
+	if workflows == nil {
+		t.Fatal("nil workflow index")
+	}
 }

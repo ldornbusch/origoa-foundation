@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"sort"
 
 	"github.com/thomdehoog/groundsill/internal/gitx"
@@ -427,7 +428,7 @@ func (f *Foundation) Status(ctx context.Context) (*Status, error) {
 func (f *Foundation) Reindex() {
 	go func() {
 		if err := f.DB.Reindex(context.Background()); err != nil {
-			fmt.Println("reindex:", err)
+			log.Printf("foundation: reindex: %v", err)
 		}
 	}()
 }

@@ -4,8 +4,13 @@
 #   make test             go vet, gofmt gate, unit tests (PostgreSQL-backed tests need GROUNDSILL_TEST_DSN)
 #   make test-ui          Playwright browser tests against a temporary server (needs GROUNDSILL_TEST_DSN)
 #   make e2e              REST end-to-end script against a temporary server (needs GROUNDSILL_TEST_DSN)
+#   make lint             golangci-lint (https://golangci-lint.run) over the Go code
 #   make run              serve http://127.0.0.1:8080 (needs GROUNDSILL_DB)
-.PHONY: build web test test-ui e2e fuzz run clean
+#   make docker           build the container image (tag groundsill:$(VERSION))
+.PHONY: build web test test-ui test-ui-all lint e2e fuzz run docker clean
+
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+LDFLAGS := -s -w -X main.version=$(VERSION)
 
 GROUNDSILL_TEST_DSN ?= postgres://postgres:postgres@127.0.0.1:5432/groundsill_test?sslmode=disable
 # Servers started by e2e/test-ui use their own database: two servers with different
@@ -15,7 +20,7 @@ GROUNDSILL_DB ?= postgres://postgres:postgres@127.0.0.1:5432/groundsill?sslmode=
 export GROUNDSILL_TEST_DSN
 
 build: web
-	go build -o bin/groundsilld ./cmd/groundsilld
+	go build -trimpath -ldflags "$(LDFLAGS)" -o bin/groundsilld ./cmd/groundsilld
 
 web:
 	cd web && npm install --no-audit --no-fund && npm run typecheck && npm run build
@@ -24,6 +29,9 @@ test:
 	go vet ./...
 	test -z "$$(gofmt -l .)"
 	go test -race ./...
+
+lint:
+	golangci-lint run ./...
 
 fuzz:
 	go test -run xxx -fuzz FuzzRoundTrip   -fuzztime 20s ./internal/ojson/
@@ -46,8 +54,16 @@ e2e: build
 test-ui: build
 	$(call with_server,ui,18090,cd web && GROUNDSILL_URL=http://127.0.0.1:18090 npx playwright test tests/ui.spec.ts)
 
+# The complete browser suite (fields, documents, navigation, relations,
+# collaboration, adversarial); slower than test-ui.
+test-ui-all: build
+	$(call with_server,ui,18090,cd web && GROUNDSILL_URL=http://127.0.0.1:18090 npx playwright test)
+
 run: build
 	./bin/groundsilld -repo data/groundsill.git -addr 127.0.0.1:8080 -web web/dist -db "$(GROUNDSILL_DB)"
 
+docker:
+	docker build --build-arg VERSION=$(VERSION) -t groundsill:$(VERSION) .
+
 clean:
-	rm -rf bin web/dist web/node_modules web/test-results web/playwright-report
+	rm -rf bin web/dist web/node_modules web/test-results web/playwright-report web/shots

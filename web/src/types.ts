@@ -127,6 +127,7 @@ export interface Tree { folder: string; folders: FolderInfo[]; artifacts: Summar
 export interface ProjectionStatus {
   processedHash: string;
   maintenance: boolean;
+  lastRebuild?: string;
   reason?: string;
   phase?: string;
   progress: number;

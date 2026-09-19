@@ -231,10 +231,11 @@ export class Detail extends LitElement {
   }
 
   private move() {
-    const folder = prompt("Move to folder (empty = repository root):", this.view?.meta.folder ?? "");
-    if (folder === null) return;
-    api.move(this.guid, folder).then((v) => { this.view = v; store.toast(`Moved to ${folder || "/"}`, "success"); store.refresh(); navigate({ folder }); this.reload(true); })
-      .catch((e) => store.toast(e instanceof ApiError ? e.message : String(e), "error"));
+    store.prompt("Move artifact", { text: "Target folder; leave empty for the repository root.", value: this.view?.meta.folder ?? "", confirmLabel: "Move" }).then((folder) => {
+      if (folder === null) return;
+      api.move(this.guid, folder).then((v) => { this.view = v; store.toast(`Moved to ${folder || "/"}`, "success"); store.refresh(); navigate({ folder }); this.reload(true); })
+        .catch((e) => store.toast(e instanceof ApiError ? e.message : String(e), "error"));
+    });
   }
 
   private createVariant() {
@@ -266,7 +267,7 @@ export class Detail extends LitElement {
         <button class="btn sm" title=${r.expanded ? "Restore layout" : "Expand detail"} @click=${() => navigate({ expanded: !r.expanded })}>${r.expanded ? "⤡" : "⤢"}</button>
         <button class="btn sm" @click=${this.move}>Move…</button>
         <button class="btn sm danger" data-test="delete" @click=${this.deleteArtifact}>Delete</button>
-        <button class="btn sm icon" title="Close" @click=${() => navigate({ guid: null, tab: "", expanded: false })}>✕</button>
+        <button class="btn sm icon" title="Close" aria-label="Close detail view" @click=${() => navigate({ guid: null, tab: "", expanded: false })}>✕</button>
       </div>
       <div class="detail-body">
         <nav class="quicklinks">${SECTIONS.filter((s) => this.hasSection(s)).map((s) => html`<a href="#" class=${active === s ? "active" : ""} @click=${(e: Event) => { e.preventDefault(); navigate({ tab: s }, true); this.querySelector(`#sec-${s}`)?.scrollIntoView({ block: "start" }); }}>${this.sectionName(s)}<span class="n">${this.sectionCount(s)}</span></a>`)}</nav>
@@ -377,11 +378,11 @@ export class Detail extends LitElement {
       ${kindIcon(lv.other.kind as never)}${lv.other.hid ? html`<span class="hid">${lv.other.hid}</span>` : nothing}
       <a href=${"/artifact/" + lv.other.guid} @click=${(e: Event) => { e.preventDefault(); navigate({ guid: lv.other.guid }); }}>${label(lv.other as never)}</a>
       <span class="grow"></span>
-      <button class="btn sm" title="Remove link" @click=${() => api.remove(lv.link.guid).then(() => { this.reload(true); store.refresh(); }).catch((e) => store.toast(e.message, "error"))}>✕</button></div>`;
+      <button class="btn sm" title="Remove link" aria-label="Remove link" @click=${() => api.remove(lv.link.guid).then(() => { this.reload(true); store.refresh(); }).catch((e) => store.toast(e.message, "error"))}>✕</button></div>`;
     return html`<section class="section" id="sec-relationships"><h3>Relationships <span class="actions">
         ${rel?.allowedAsSource.map((s) => html`<button class="btn sm" @click=${() => this.addLink(true, s.type, s.targetTypes)}>＋ ${s.displayName || s.type} →</button>`)}
         ${rel?.allowedAsTarget.filter((s) => !rel.allowedAsSource.some((x) => x.type === s.type)).map((s) => html`<button class="btn sm" @click=${() => this.addLink(false, s.type, s.sourceTypes)}>← ${s.displayName || s.type}</button>`)}
-        <button class="btn sm" @click=${() => { const t = prompt("Link type (e.g. related):", "related"); if (t) this.addLink(true, t); }}>＋ other…</button></span></h3>
+        <button class="btn sm" @click=${() => store.prompt("Link type", { text: "Any link type; undefined types have no endpoint rules.", value: "related", confirmLabel: "Choose target…" }).then((t) => { if (t?.trim()) this.addLink(true, t.trim()); })}>＋ other…</button></span></h3>
       ${!rel || (!rel.incoming.length && !rel.outgoing.length) ? html`<div class="muted small">No links yet.</div>` : html`<div class="links-list">
         ${rel.outgoing.map((l) => row(l as never, "out"))}${rel.incoming.map((l) => row(l as never, "in"))}</div>`}</section>`;
   }
@@ -415,7 +416,7 @@ export class Detail extends LitElement {
     return html`<section class="section" id="sec-attachments"><h3>Attachments <span class="actions"><label class="btn sm">＋ Upload<input type="file" hidden @change=${this.upload} /></label></span></h3>
       ${!att.length ? html`<div class="muted small">Files stored in the artifact's GUID directory appear here.</div>` : nothing}
       ${att.map((a) => html`<div class="attach-row"><a href=${api.fileUrl(this.guid, a.name)} target="_blank" rel="noopener">${a.name}</a><span class="size">${fmtSize(a.size)}</span>
-        <button class="btn sm" @click=${() => api.deleteFile(this.guid, a.name).then(() => this.reload(true)).catch((e) => store.toast(e.message, "error"))}>✕</button></div>`)}
+        <button class="btn sm" title="Remove attachment" aria-label="Remove attachment" @click=${() => api.deleteFile(this.guid, a.name).then(() => this.reload(true)).catch((e) => store.toast(e.message, "error"))}>✕</button></div>`)}
     </section>`;
   }
 

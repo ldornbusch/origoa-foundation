@@ -93,6 +93,11 @@ func (r *Repo) run(ctx context.Context, stdin []byte, args ...string) ([]byte, e
 	var out, errb bytes.Buffer
 	c.Stdout, c.Stderr = &out, &errb
 	if err := c.Run(); err != nil {
+		if ctx.Err() != nil {
+			// The process was killed because the caller gave up; report the
+			// cancellation, not the signal, so callers can recognize it.
+			err = fmt.Errorf("%w (%v)", ctx.Err(), err)
+		}
 		return out.Bytes(), &Error{Args: args, Err: err, Stderr: strings.TrimSpace(errb.String())}
 	}
 	return out.Bytes(), nil

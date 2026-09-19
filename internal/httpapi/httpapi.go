@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/thomdehoog/groundsill/internal/foundation"
 	"github.com/thomdehoog/groundsill/internal/model"
@@ -31,7 +32,9 @@ const (
 type Server struct {
 	F   *foundation.Foundation
 	Hub *Hub
-	mux *http.ServeMux
+	// Version is reported by GET /api/health.
+	Version string
+	mux     *http.ServeMux
 }
 
 // New builds the API handler.
@@ -46,6 +49,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) { s.mux.Serve
 func (s *Server) routes() {
 	m := s.mux
 	// repository services
+	m.HandleFunc("GET /api/health", s.health)
 	m.HandleFunc("GET /api/repository", s.status)
 	m.HandleFunc("GET /api/repository/tree", s.tree)
 	m.HandleFunc("GET /api/repository/search", s.search)
@@ -123,6 +127,10 @@ func fail(w http.ResponseWriter, err error) {
 	case errors.Is(err, context.Canceled):
 		// The client went away (navigation, abort): nothing to report.
 		writeError(w, 499, "client closed request")
+		return
+	case errors.Is(err, context.DeadlineExceeded):
+		w.Header().Set("Retry-After", "5")
+		writeError(w, http.StatusGatewayTimeout, "the request took too long")
 		return
 	case errors.Is(err, model.ErrNotFound):
 		writeError(w, http.StatusNotFound, strip(err, model.ErrNotFound, "not found"))
@@ -474,7 +482,10 @@ func (s *Server) getFile(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", http.DetectContentType(data))
 	w.Header().Set("Content-Disposition", "inline; filename=\""+strings.ReplaceAll(r.PathValue("name"), `"`, "")+"\"")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
-	w.Write(data)
+	// Attachments are user content served from the application origin: a
+	// sandboxed policy keeps an uploaded HTML file from running as the app.
+	w.Header().Set("Content-Security-Policy", "default-src 'none'; sandbox")
+	_, _ = w.Write(data)
 }
 
 func (s *Server) putFile(w http.ResponseWriter, r *http.Request) {
@@ -507,6 +518,29 @@ func (s *Server) deleteFile(w http.ResponseWriter, r *http.Request) {
 }
 
 // ---- repository services --------------------------------------------------
+
+// health is the liveness/readiness probe: 200 while the projection
+// database answers, 503 otherwise. Maintenance mode is reported but is not
+// a failure: the API keeps serving what the current phase allows.
+func (s *Server) health(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+	defer cancel()
+	st := s.F.DB.Status()
+	body := map[string]any{
+		"status":      "ok",
+		"version":     s.Version,
+		"database":    true,
+		"maintenance": st.Maintenance,
+		"sessions":    s.Hub.Clients(),
+	}
+	if err := s.F.DB.Ping(ctx); err != nil {
+		body["status"] = "unavailable"
+		body["database"] = false
+		writeJSON(w, http.StatusServiceUnavailable, body)
+		return
+	}
+	writeJSON(w, http.StatusOK, body)
+}
 
 func (s *Server) status(w http.ResponseWriter, r *http.Request) {
 	st, err := s.F.Status(r.Context())
